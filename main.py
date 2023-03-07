@@ -17,7 +17,7 @@ def main(args):
     device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
     dataset = mmc.datasets.load_dataset(root='./datasets', name='cifar10')
     dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=3, shuffle=True, num_workers=0) #4)
+        dataset, batch_size=64, shuffle=True, num_workers=4) #4)
 
     # Define models and optimizers
     netG = sngan_32.SNGANGenerator32(norm='norm_est').to(device) #norm='sn'
