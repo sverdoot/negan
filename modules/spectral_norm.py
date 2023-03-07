@@ -5,6 +5,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from abc import abstractmethod
+
 
 from .svd import get_sing_vals, get_ready_for_svd, get_sing_vals_simple
 
@@ -30,6 +32,7 @@ class SpectralNorm(object):
         # Register a singular vector for each sigma
         self.register_buffer('sn_u', torch.randn(1, n_dim))
         self.register_buffer('sn_sigma', torch.ones(1))
+        self.register_forward_pre_hook(lambda m, i: setattr(m, 'pad_to', i[0].shape[2:]))
 
     @property
     def u(self):
@@ -85,7 +88,7 @@ class EffSpectralNorm(object):
         num_iters (int): Number of iterations for power iter.
         eps (float): Epsilon for zero division tolerance when normalizing.
     """
-    def __init__(self, n_dim, num_iters=1, eps=1e-12, update_every=10, n_samp=10):
+    def __init__(self, n_dim=0, num_iters=1, eps=1e-12, update_every=10, n_samp=10):
         self.num_iters = num_iters
         self.eps = eps
         self.n_dim = n_dim
@@ -103,13 +106,27 @@ class EffSpectralNorm(object):
         return getattr(self, 'sn_gamma')
 
     @torch.no_grad()
-    def _compute_gamma(self, W, pad_to, stride):
+    @abstractmethod
+    def _compute_gamma(W, pad_to, stride):
         # sing_vals = np.sort(get_sing_vals(W, x.shape[2:], stride).flatten())[::-1]
         sing_vals = np.sort(get_sing_vals(W, pad_to, stride).flatten())[::-1]
         second_norm = sing_vals[0]
         frob_norm = np.sqrt((sing_vals ** 2).sum())
-        gamma = frob_norm**2 / second_norm**2 / self.n_dim
-        return gamma
+        n_dim = len(sing_vals)
+        #self.n_dim = n_dim
+        gamma = frob_norm**2 / second_norm**2 / n_dim
+        print(gamma, n_dim)
+        return gamma, n_dim
+    
+    @abstractmethod
+    def _estimate(module: nn.Module, pad_to, stride: int, n_samp: int=100):
+        W = module.weight
+        gamma, n_dim = EffSpectralNorm._compute_gamma(W, pad_to, stride)
+        device = W.device
+        samp = torch.randn([n_samp, W.shape[1]] + list(pad_to)).to(device)
+        norm = torch.norm(module.forward(samp)).mean(0).sum()
+        estimate = norm / gamma ** .5
+        return estimate
     
     def estimate_norm(self):
         W = self.weight
@@ -117,37 +134,20 @@ class EffSpectralNorm(object):
         if self.training:
             self.cnt += 1
             if self.cnt % self.update_every == 1:
-                gamma = self._compute_gamma(W, self.pad_to, self.stride)
+                gamma, n_dim = EffSpectralNorm._compute_gamma(W, self.pad_to, self.stride)
                 with torch.no_grad():
                     self.gamma[:] = gamma
+                    self.n_dim = n_dim
                     
         device = next(self.parameters()).device
         samp = torch.randn([self.n_samp, W.shape[1]] + list(self.pad_to)).to(device)
         norm = torch.norm(self.forward(samp)).mean(0).sum()
-        estimate = norm / self.gamma / self.n_dim
+        estimate = norm / self.gamma ** .5 / self.n_dim
         return estimate
     
     def sn_weights(self):
-        r"""
-        Spectrally normalize current weights of the layer.
-        """
         return self.weight
-        # W = self.weight.view(self.weight.shape[0], -1)
-
-        # # Power iteration
-        # sigma, u, v = self._power_iteration(W=W,
-        #                                     u=self.u,
-        #                                     num_iters=self.num_iters,
-        #                                     eps=self.eps)
-
-        # # Update only during training
-        # if self.training:
-        #     with torch.no_grad():
-        #         self.sigma[:] = sigma
-        #         self.u[:] = u
-
-        # return self.weight / sigma
-    
+        
     
 class SNConv2d(nn.Conv2d, EffSpectralNorm):
     r"""
