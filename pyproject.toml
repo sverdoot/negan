@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "op_norm_gan"
+name = "norm_est_gan"
 version = "0.0.1"
 description = ""
 authors = []

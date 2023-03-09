@@ -3,12 +3,11 @@ Implementation of spectral normalization for GANs.
 """
 from abc import abstractmethod
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .svd import get_ready_for_svd, get_sing_vals, get_sing_vals_simple
+from .svd import get_sing_vals, get_sing_vals_simple
 
 
 class SpectralNorm(object):
@@ -76,7 +75,7 @@ class SpectralNorm(object):
         return self.weight / sigma
 
 
-class EffSpectralNorm(object):
+class NormEstimation(object):
     r"""
     Spectral Normalization for GANs (Miyato 2018).
 
@@ -113,22 +112,19 @@ class EffSpectralNorm(object):
     @torch.no_grad()
     @abstractmethod
     def _compute_gamma(W, pad_to, stride):
-        # sing_vals = np.sort(get_sing_vals(W, x.shape[2:], stride).flatten())[::-1]
         sing_vals = torch.sort(
             get_sing_vals(W, pad_to, stride).flatten(), descending=True
         )[0]
         second_norm = sing_vals[0]
         frob_norm = torch.sqrt((sing_vals**2).sum())
-        # print(frob_norm, second_norm)
         n_dim = len(sing_vals)
-        # self.n_dim = n_dim
         gamma = frob_norm**2 / second_norm**2 / n_dim
         return gamma, n_dim
 
     @abstractmethod
     def _estimate(module: nn.Module, pad_to, stride: int, n_samp: int = 100):
         W = module.weight
-        gamma, n_dim = EffSpectralNorm._compute_gamma(W, pad_to, stride)
+        gamma, n_dim = NormEstimation._compute_gamma(W, pad_to, stride)
         device = W.device
         samp = torch.randn([n_samp, W.shape[1]] + list(pad_to)).to(device)
         out = module.forward(samp)
@@ -142,7 +138,7 @@ class EffSpectralNorm(object):
         if self.training:
             self.cnt += 1
             if self.cnt % self.update_every == 1:
-                gamma, n_dim = EffSpectralNorm._compute_gamma(
+                gamma, n_dim = NormEstimation._compute_gamma(
                     W, self.pad_to, self.stride
                 )
                 with torch.no_grad():
@@ -154,15 +150,13 @@ class EffSpectralNorm(object):
         out = self.forward(samp)
         normsq = ((out**2).sum(list(range(len(out.shape)))[1:])).mean(0)
         estimate = normsq / (self.gamma * self.n_dim)
-        # if self.cnt % self.update_every == 1:
-        #     print(normsq **.5, estimate **.5)
         return estimate
 
     def sn_weights(self):
         return self.weight
 
 
-class SNConv2d(nn.Conv2d, EffSpectralNorm):
+class NEConv2d(nn.Conv2d, NormEstimation):
     r"""
     Spectrally normalized layer for Conv2d.
 
@@ -174,7 +168,7 @@ class SNConv2d(nn.Conv2d, EffSpectralNorm):
     def __init__(self, in_channels, out_channels, *args, **kwargs):
         nn.Conv2d.__init__(self, in_channels, out_channels, *args, **kwargs)
 
-        EffSpectralNorm.__init__(
+        NormEstimation.__init__(
             self, n_dim=out_channels, num_iters=kwargs.get("num_iters", 1)
         )
 
@@ -190,39 +184,39 @@ class SNConv2d(nn.Conv2d, EffSpectralNorm):
         )
 
 
-class SNLinear(nn.Linear, SpectralNorm):
-    r"""
-    Spectrally normalized layer for Linear.
+# class SNLinear(nn.Linear, SpectralNorm):
+#     r"""
+#     Spectrally normalized layer for Linear.
 
-    Attributes:
-        in_features (int): Input feature dimensions.
-        out_features (int): Output feature dimensions.
-    """
+#     Attributes:
+#         in_features (int): Input feature dimensions.
+#         out_features (int): Output feature dimensions.
+#     """
 
-    def __init__(self, in_features, out_features, *args, **kwargs):
-        nn.Linear.__init__(self, in_features, out_features, *args, **kwargs)
+#     def __init__(self, in_features, out_features, *args, **kwargs):
+#         nn.Linear.__init__(self, in_features, out_features, *args, **kwargs)
 
-        SpectralNorm.__init__(
-            self, n_dim=out_features, num_iters=kwargs.get("num_iters", 1)
-        )
+#         SpectralNorm.__init__(
+#             self, n_dim=out_features, num_iters=kwargs.get("num_iters", 1)
+#         )
 
-    def forward(self, x):
-        return F.linear(input=x, weight=self.sn_weights(), bias=self.bias)
+#     def forward(self, x):
+#         return F.linear(input=x, weight=self.sn_weights(), bias=self.bias)
 
 
-class SNEmbedding(nn.Embedding, SpectralNorm):
-    r"""
-    Spectrally normalized layer for Embedding.
+# class SNEmbedding(nn.Embedding, SpectralNorm):
+#     r"""
+#     Spectrally normalized layer for Embedding.
 
-    Attributes:
-        num_embeddings (int): Number of embeddings.
-        embedding_dim (int): Dimensions of each embedding vector
-    """
+#     Attributes:
+#         num_embeddings (int): Number of embeddings.
+#         embedding_dim (int): Dimensions of each embedding vector
+#     """
 
-    def __init__(self, num_embeddings, embedding_dim, *args, **kwargs):
-        nn.Embedding.__init__(self, num_embeddings, embedding_dim, *args, **kwargs)
+#     def __init__(self, num_embeddings, embedding_dim, *args, **kwargs):
+#         nn.Embedding.__init__(self, num_embeddings, embedding_dim, *args, **kwargs)
 
-        SpectralNorm.__init__(self, n_dim=num_embeddings)
+#         SpectralNorm.__init__(self, n_dim=num_embeddings)
 
-    def forward(self, x):
-        return F.embedding(input=x, weight=self.sn_weights())
+#     def forward(self, x):
+#         return F.embedding(input=x, weight=self.sn_weights())

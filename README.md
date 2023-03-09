@@ -4,8 +4,8 @@
 
 Create environment:
 ```bash
-conda create -n op_norm_gan python=3.8
-conda activate op_norm_gan
+conda create -n norm_est_gan python=3.8
+conda activate norm_est_gan
 ```
 
 One of the following:

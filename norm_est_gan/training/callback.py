@@ -8,8 +8,12 @@ import numpy as np
 import scipy as sp
 import torch
 from matplotlib import pyplot as plt
+from torch_mimicry.modules.spectral_norm import SpectralNorm
 from torchvision import transforms
 from torchvision.utils import make_grid
+
+from norm_est_gan.modules.spectral_norm import NormEstimation
+from norm_est_gan.modules.svd import get_sing_vals
 
 
 class Callback(ABC):
@@ -45,18 +49,12 @@ class CallbackRegistry:
         return model
 
 
-from torch_mimicry.modules.spectral_norm import SpectralNorm
-
-from modules.spectral_norm import EffSpectralNorm
-from modules.svd import get_sing_vals
-
-
 @torch.no_grad()
 def get_spectr(model):
     spectr = dict()
     for i, mod in enumerate(model.modules()):
         if (
-            EffSpectralNorm in type(mod).__bases__
+            NormEstimation in type(mod).__bases__
             or SpectralNorm in type(mod).__bases__
         ):
             singular_vals = get_sing_vals(mod.weight, mod.pad_to, mod.stride)
@@ -139,7 +137,7 @@ class LogSigularVals(Callback):
 #         if step % self.invoke_every == 0:
 #             gammas = dict()
 #             for i, mod in enumerate(self.net.modules()):
-#                 if EffSpectralNorm in type(mod).__bases__:
+#                 if NormEstimation in type(mod).__bases__:
 #                     gammas[i] = mod.gamma.detach().data
 
 #             torch.save(gammas, Path(self.save_dir, f'gamma{step:05d}.pt'))

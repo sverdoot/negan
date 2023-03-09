@@ -4,13 +4,13 @@ Implementation of Base GAN models.
 import torch
 from torch_mimicry.nets.gan import BaseDiscriminator, BaseGenerator
 
-from modules.spectral_norm import EffSpectralNorm
+from norm_est_gan.modules.spectral_norm import NormEstimation
 
 
 def compute_norm_penalty(model, scale=1.0):
     loss = 0
     for p in model.modules():
-        if EffSpectralNorm in type(p).__bases__:
+        if NormEstimation in type(p).__bases__:
             loss += p.estimate_norm().squeeze()
     return loss * scale
 
@@ -73,4 +73,3 @@ class BaseDiscriminator(BaseDiscriminator):
         errD += compute_norm_penalty(self, scale=self.np_scale)
 
         return errD
-

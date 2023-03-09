@@ -6,9 +6,9 @@ import torch.optim as optim
 import torch_mimicry as mmc
 from torch import nn
 
-from nets.our_gan import sngan_32
-from training.callback import LogSigularVals  # , LogGamma
-from training.trainer import CustomTrainer
+from norm_est_gan.nets.our_gan import sngan_32
+from norm_est_gan.training.callback import LogSigularVals  # , LogGamma
+from norm_est_gan.training.trainer import CustomTrainer
 
 
 def parse_argumets():

@@ -1,4 +1,3 @@
-
 """
 https://github.com/kwotsin/mimicry/blob/master/torch_mimicry/nets/sngan/sngan_32.py
 """
@@ -7,9 +6,19 @@ import torch.nn as nn
 from torch_mimicry.modules.layers import SNLinear
 from torch_mimicry.nets.sngan import SNGANDiscriminator32, SNGANGenerator32
 
-from nets.our_gan import base
+from norm_est_gan.nets.our_gan import base
+from norm_est_gan.modules.resblocks import GBlock, DBlock, DBlockOptimized
 
+# def SNConv2d(*args, default=True, **kwargs):
+#     r"""
+#     Wrapper for applying spectral norm on conv2d layer.
+#     """
+#     if default:
+#         return nn.utils.spectral_norm(nn.Conv2d(*args, **kwargs))
 
+#     else:
+#         return spectral_norm.SNConv2d(*args, **kwargs)
+    
 class SNGANGenerator32(SNGANGenerator32, base.BaseGenerator):
     r"""
     ResNet backbone generator for SNGAN.
@@ -29,16 +38,16 @@ class SNGANGenerator32(SNGANGenerator32, base.BaseGenerator):
         )  # , **kwargs)
         base.BaseGenerator.__post_init__(self, **kwargs)
 
-        if norm == "norm_est":
-            from modules.resblocks import GBlock
-        else:
-            from torch_mimicry.modules.resblocks import GBlock
+        # if norm == "norm_est":
+        #     from norm_est_gan.modules.resblocks import GBlock
+        # else:
+        #     from torch_mimicry.modules.resblocks import GBlock
 
         # Build the layers
         self.l1 = nn.Linear(self.nz, (self.bottom_width**2) * self.ngf)
-        self.block2 = GBlock(self.ngf, self.ngf, upsample=True)
-        self.block3 = GBlock(self.ngf, self.ngf, upsample=True)
-        self.block4 = GBlock(self.ngf, self.ngf, upsample=True)
+        self.block2 = GBlock(self.ngf, self.ngf, upsample=True, norm=norm)
+        self.block3 = GBlock(self.ngf, self.ngf, upsample=True, norm=norm)
+        self.block4 = GBlock(self.ngf, self.ngf, upsample=True, norm=norm)
         self.b5 = nn.BatchNorm2d(self.ngf)
         self.c5 = nn.Conv2d(self.ngf, 3, 3, 1, padding=1)
         self.activation = nn.ReLU(True)
@@ -69,16 +78,16 @@ class SNGANDiscriminator32(SNGANDiscriminator32, base.BaseDiscriminator):
         super(SNGANDiscriminator32, self).__init__(ndf=ndf)  # , **kwargs)
         base.BaseDiscriminator.__post_init__(self, **kwargs)
 
-        if norm == "norm_est":
-            from modules.resblocks import DBlock, DBlockOptimized
-        else:
-            from torch_mimicry.modules.resblocks import DBlock, DBlockOptimized
+        # if norm == "norm_est":
+        #     from modules.resblocks import DBlock, DBlockOptimized
+        # else:
+        #     from torch_mimicry.modules.resblocks import DBlock, DBlockOptimized
 
         # Build layers
-        self.block1 = DBlockOptimized(3, self.ndf)
-        self.block2 = DBlock(self.ndf, self.ndf, downsample=True)
-        self.block3 = DBlock(self.ndf, self.ndf, downsample=False)
-        self.block4 = DBlock(self.ndf, self.ndf, downsample=False)
+        self.block1 = DBlockOptimized(3, self.ndf, norm=norm)
+        self.block2 = DBlock(self.ndf, self.ndf, downsample=True, norm=norm)
+        self.block3 = DBlock(self.ndf, self.ndf, downsample=False, norm=norm)
+        self.block4 = DBlock(self.ndf, self.ndf, downsample=False, norm=norm)
         self.l5 = SNLinear(self.ndf, 1)
         self.activation = nn.ReLU(True)
 
