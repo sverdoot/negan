@@ -4,7 +4,7 @@
 **/.ipynb_checkpoints
 ./
 
-datasets/cifar10/
+datasets/
 log/
 
 **__pycache__
@@ -42,3 +42,5 @@ wandb/*
 **.pth
 **.pdf
 log/**/*.png
+
+**/events.out.tfevents.*

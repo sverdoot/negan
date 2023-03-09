@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "effective_sn"
+name = "op_norm_gan"
 version = "0.0.1"
 description = ""
 authors = []
 readme = "README.md"
-repository = ""
+repository = "http://github.com/sverdoot/2norm_gan.git"
 documentation = "TBD"
 
 [tool.black]
@@ -28,50 +28,16 @@ exclude = '''
 
 [tool.poetry.dependencies]
 python = "~3.8"
-numpy = "^1.19.4"
-matplotlib = "^3.3.3"
-torch = "~1.10"
-torchvision = "~0.11"
-Cython = ">=0"
-tqdm = "^4.5"
-sklearn = ">=0"
-POT = ">=0"
-pyro-ppl = "^1.5"
-easydict = "^1"
-seaborn = ">=0"
-pyyaml = ">=0"
-pytorch-fid = {git = "https://github.com/mseitzer/pytorch-fid"}
-wandb = "^0.12.6"
-pyyml = "^0.0.2"
-pre-commit = "^2.15.0"
-isort = "^5.10.1"
-black = "^21.12b0"
-imageio = "^2.13.5"
-studiogan = {path = "thirdparty/studiogan"}
-ninja = "^1.10.2"
-h5py = "^3.6.0"
-kornia = "^0.6.2"
-pandas = "^1.3.5"
-scipy = "^1.7.3"
-click = "^8.0.3"
-requests = "^2.26.0"
-pyspng = "^0.1.0"
-imageio-ffmpeg = "^0.4.5"
-prdc = "^0.2"
-gdown = "^4.2.0"
-"ruamel.yaml" = "^0.17.19"
-umap-learn = "^0.5.2"
-openTSNE = "^0.6.1"
-poetry-core = "1.0.4"
-torch-mimicry = {git = "https://github.com/kwotsin/mimicry.git", rev = "master"}
-flake8 = "^4.0.1"
-dvc = {extras = ["gdrive"], version = "^2.9.5"}
-tabulate = "^0.8.9"
-tensorboard = "^2.8.0"
-wrapt = "^1.14.0"
+numpy = "^1.24.2"
+torch-mimicry = {git = "https://github.com/kwotsin/mimicry.git", rev = "0.1.16"}
+einops = "^0.6.0"
+black = "^23.1.0"
+isort = "^5.12.0"
+# flake8 = "^6.0.0"
+flake8 = "5.0.4"
 
 [tool.isort]
-src_paths = ["maxent_gan"]
+src_paths = ["."]
 multi_line_output = 3
 include_trailing_comma = true
 force_grid_wrap = 0
@@ -79,7 +45,7 @@ use_parentheses = true
 line_length = 88
 lines_after_imports = 2
 skip_glob = 'thirdparty'
-known_third_party = ["PIL", "gdown", "imageio", "matplotlib", "numpy", "ot", "pyro", "pytorch_fid", "ruamel", "scipy", "seaborn", "skimage", "sklearn", "studiogan", "tensorflow", "torch", "torch_mimicry", "torchvision", "tqdm", "yaml"]
+known_third_party = ["PIL", "gdown", "imageio", "matplotlib", "numpy", "ruamel", "scipy", "seaborn", "skimage", "sklearn", "tensorflow", "torch", "torchvision",  "torch_mimicry"]
 
 [tool.flake8]
 min_python_version = "3.8.0"
@@ -116,6 +82,5 @@ extend-ignore = """
 extend-exclude = """
     # Frozen and not subject to change in this repo:
     thirdparty/*,
-    maxent_gan/utils/metrics/compute_fid_tf.py,
     # # External to the project's coding standards:
     """

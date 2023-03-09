@@ -1,8 +1,8 @@
 import logging
+import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union, Any
-import warnings
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import scipy as sp
@@ -43,22 +43,34 @@ class CallbackRegistry:
         model = cls.registry[name]
         model = model(**kwargs)
         return model
-    
-    
+
+
+from torch_mimicry.modules.spectral_norm import SpectralNorm
+
+from modules.spectral_norm import EffSpectralNorm
 from modules.svd import get_sing_vals
-from modules.spectral_norm import SpectralNorm, EffSpectralNorm
 
 
 @torch.no_grad()
 def get_spectr(model):
     spectr = dict()
     for i, mod in enumerate(model.modules()):
-        if EffSpectralNorm in type(mod).__bases__ or SpectralNorm in type(mod).__bases__:
+        if (
+            EffSpectralNorm in type(mod).__bases__
+            or SpectralNorm in type(mod).__bases__
+        ):
             singular_vals = get_sing_vals(mod.weight, mod.pad_to, mod.stride)
+            singular_vals = torch.sort(singular_vals.flatten(), descending=True)[0]
             spectr[i] = singular_vals.detach()
-            
+        elif hasattr(mod, "weight_orig") and hasattr(
+            mod, "stride"
+        ):  # default spectral norm
+            singular_vals = get_sing_vals(mod.weight, mod.pad_to, mod.stride)
+            singular_vals = torch.sort(singular_vals.flatten(), descending=True)[0]
+            spectr[i] = singular_vals.detach()
+
     return spectr
-            
+
 
 @CallbackRegistry.register()
 class LogSigularVals(Callback):
@@ -79,53 +91,63 @@ class LogSigularVals(Callback):
         self.save_dir = save_dir
 
     @torch.no_grad()
-    def invoke(self, info: Dict[str, Any]):
+    def invoke(self, info: Dict[str, Any], log):
         step = info.get("step", self.cnt)
-        print(step)
         if step % self.invoke_every == 0:
             singular_vals = get_spectr(self.net)
-            
-            torch.save(singular_vals, Path(self.save_dir, f'spec{step:05d}.pt'))
-            
-            
-        self.cnt += 1
-        return 1
-    
 
-@CallbackRegistry.register()
-class LogGamma(Callback):
-    def __init__(
-        self,
-        net,
-        *,
-        invoke_every: int = 1,
-        init_params: Optional[Dict] = None,
-        keys: Optional[List[str]] = None,
-        save_dir=None,
-    ):
-        self.init_params = init_params if init_params else {}
-
-        self.invoke_every = invoke_every
-        self.keys = keys
-        self.net = net
-        self.save_dir = save_dir
-
-    @torch.no_grad()
-    def invoke(self, info: Dict[str, Any]):
-        step = info.get("step", self.cnt)
-        print(step)
-        if step % self.invoke_every == 0:
             gammas = dict()
-            for i, mod in enumerate(self.net.modules()):
-                if EffSpectralNorm in type(mod).__bases__:
-                    gammas[i] = mod.gamma.detach().data
-            
-            torch.save(gammas, Path(self.save_dir, f'gamma{step:05d}.pt'))
-            
+            for n, v in singular_vals.items():
+                second_norm = v[0]
+                frob_norm = np.sqrt((v**2).sum())
+                n_dim = len(v)
+                gamma = frob_norm**2 / second_norm**2 / n_dim
+                log.add_metric(f"sec_norm_{n}", second_norm.item())
+                log.add_metric(f"frob_norm_{n}", frob_norm.item())
+                log.add_metric(f"gamma_{n}", gamma.item())
+
+                gammas[n] = gamma
+
+            torch.save(singular_vals, Path(self.save_dir, f"spec{step:05d}.pt"))
+            torch.save(gammas, Path(self.save_dir, f"gamma{step:05d}.pt"))
+
         self.cnt += 1
         return 1
-        
-        
+
+
+# @CallbackRegistry.register()
+# class LogGamma(Callback):
+#     def __init__(
+#         self,
+#         net,
+#         *,
+#         invoke_every: int = 1,
+#         init_params: Optional[Dict] = None,
+#         keys: Optional[List[str]] = None,
+#         save_dir=None,
+#     ):
+#         self.init_params = init_params if init_params else {}
+
+#         self.invoke_every = invoke_every
+#         self.keys = keys
+#         self.net = net
+#         self.save_dir = save_dir
+
+#     @torch.no_grad()
+#     def invoke(self, info: Dict[str, Any]):
+#         step = info.get("step", self.cnt)
+#         if step % self.invoke_every == 0:
+#             gammas = dict()
+#             for i, mod in enumerate(self.net.modules()):
+#                 if EffSpectralNorm in type(mod).__bases__:
+#                     gammas[i] = mod.gamma.detach().data
+
+#             torch.save(gammas, Path(self.save_dir, f'gamma{step:05d}.pt'))
+
+#         self.cnt += 1
+#         return 1
+
+
 # @CallbackRegistry.register()
 # class WandbCallback(Callback):
 #     def __init__(

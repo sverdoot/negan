@@ -2,12 +2,13 @@
 Implementation of Base GAN models.
 """
 import torch
+from torch_mimicry.nets.gan import BaseDiscriminator, BaseGenerator
+
+from modules.spectral_norm import EffSpectralNorm
+
 
 # from torch_mimicry.nets.basemodel import basemodel
 # from torch_mimicry.modules import losses
-
-from torch_mimicry.nets.gan import BaseGenerator, BaseDiscriminator
-from modules.spectral_norm import EffSpectralNorm
 
 
 def compute_norm_penalty(model, scale=1.0):
@@ -28,6 +29,7 @@ class BaseGenerator(BaseGenerator):
         bottom_width (int): Starting width for upsampling generator output to an image.
         loss_type (str): Name of loss to use for GAN loss.
     """
+
     def __post_init__(self, np_scale=1.0):
         self.np_scale = np_scale
 
@@ -47,6 +49,13 @@ class BaseGenerator(BaseGenerator):
 
         return errG
 
+    # def train_step(self, real_batch, netG, optD, log_data, device=None, global_step=None, **kwargs):
+    #     log_data = super().train_step(real_batch, netG, optD, log_data, device, global_step, **kwargs)
+    #     for i, p in enumerate(self.modules()):
+    #         if EffSpectralNorm in type(p).__bases__:
+    #             log_data.add_metric(f'g_gamma_{i}', p.gamma.item())
+    #     return log_data
+
 
 class BaseDiscriminator(BaseDiscriminator):
     r"""
@@ -56,6 +65,7 @@ class BaseDiscriminator(BaseDiscriminator):
         ndf (int): Variable controlling discriminator feature map sizes.
         loss_type (str): Name of loss to use for GAN loss.
     """
+
     def __post_init__(self, np_scale=1.0):
         self.np_scale = np_scale
 
@@ -74,4 +84,10 @@ class BaseDiscriminator(BaseDiscriminator):
         errD += compute_norm_penalty(self, scale=self.np_scale)
 
         return errD
-    
+
+    # def train_step(self, real_batch, netG, optD, log_data, device=None, global_step=None, **kwargs):
+    #     log_data = super().train_step(real_batch, netG, optD, log_data, device, global_step, **kwargs)
+    #     for i, p in enumerate(self.modules()):
+    #         if EffSpectralNorm in type(p).__bases__:
+    #             log_data.add_metric(f'd_gamma_{i}', p.gamma.item())
+    #     return log_data

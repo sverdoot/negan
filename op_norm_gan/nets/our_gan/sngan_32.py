@@ -3,10 +3,9 @@ Implementation of SNGAN for image size 32.
 """
 import torch
 import torch.nn as nn
-
 from torch_mimicry.modules.layers import SNLinear
-from torch_mimicry.nets.sngan import sngan_base
-from torch_mimicry.nets.sngan import SNGANDiscriminator32, SNGANGenerator32
+from torch_mimicry.nets.sngan import SNGANDiscriminator32, SNGANGenerator32, sngan_base
+
 from nets.our_gan import base
 
 
@@ -20,16 +19,19 @@ class SNGANGenerator32(SNGANGenerator32, base.BaseGenerator):
         bottom_width (int): Starting width for upsampling generator output to an image.
         loss_type (str): Name of loss to use for GAN loss.
     """
+
     def __init__(self, nz=128, ngf=256, bottom_width=4, **kwargs):
-        #super(base.BaseGenerator, self).__init__(**kwargs)
-        norm = kwargs.pop('norm', 'norm_est')
-        super(SNGANGenerator32, self).__init__(nz=nz, ngf=ngf, bottom_width=bottom_width, **kwargs)
+        # super(base.BaseGenerator, self).__init__(**kwargs)
+        norm = kwargs.pop("norm", "norm_est")
+        super(SNGANGenerator32, self).__init__(
+            nz=nz, ngf=ngf, bottom_width=bottom_width
+        )  # , **kwargs)
         base.BaseGenerator.__post_init__(self, **kwargs)
-        
-        if norm == 'norm_est':
-            from modules.resblocks import DBlockOptimized, DBlock, GBlock
+
+        if norm == "norm_est":
+            from modules.resblocks import GBlock
         else:
-            from torch_mimicry.modules.resblocks import DBlockOptimized, DBlock, GBlock
+            from torch_mimicry.modules.resblocks import GBlock
 
         # Build the layers
         self.l1 = nn.Linear(self.nz, (self.bottom_width**2) * self.ngf)
@@ -43,10 +45,13 @@ class SNGANGenerator32(SNGANGenerator32, base.BaseGenerator):
         # Initialise the weights
         nn.init.xavier_uniform_(self.l1.weight.data, 1.0)
         nn.init.xavier_uniform_(self.c5.weight.data, 1.0)
-        
-    
-    def train_step(self, real_batch, netD, optG, log_data, device=None, global_step=None, **kwargs):
-        return base.BaseGenerator.train_step(self, real_batch, netD, optG, log_data, device, global_step, **kwargs)
+
+    def train_step(
+        self, real_batch, netD, optG, log_data, device=None, global_step=None, **kwargs
+    ):
+        return base.BaseGenerator.train_step(
+            self, real_batch, netD, optG, log_data, device, global_step, **kwargs
+        )
 
 
 class SNGANDiscriminator32(SNGANDiscriminator32, base.BaseDiscriminator):
@@ -57,28 +62,33 @@ class SNGANDiscriminator32(SNGANDiscriminator32, base.BaseDiscriminator):
         ndf (int): Variable controlling discriminator feature map sizes.
         loss_type (str): Name of loss to use for GAN loss.
     """
+
     def __init__(self, ndf=128, **kwargs):
-        norm = kwargs.pop('norm', 'norm_est')
-        super(SNGANDiscriminator32, self).__init__(ndf=ndf, **kwargs)
+        norm = kwargs.pop("norm", "norm_est")
+        super(SNGANDiscriminator32, self).__init__(ndf=ndf)  # , **kwargs)
         base.BaseDiscriminator.__post_init__(self, **kwargs)
-        
-        if norm == 'norm_est':
-            from modules.resblocks import DBlockOptimized, DBlock, GBlock
+
+        if norm == "norm_est":
+            from modules.resblocks import DBlock, DBlockOptimized
         else:
-            from torch_mimicry.modules.resblocks import DBlockOptimized, DBlock, GBlock
+            from torch_mimicry.modules.resblocks import DBlock, DBlockOptimized
 
         # Build layers
         self.block1 = DBlockOptimized(3, self.ndf)
-        self.block2 = DBlock(self.ndf, self.ndf, downsample=True, spectral_norm=False)
-        self.block3 = DBlock(self.ndf, self.ndf, downsample=False, spectral_norm=False)
-        self.block4 = DBlock(self.ndf, self.ndf, downsample=False, spectral_norm=False)
+        self.block2 = DBlock(self.ndf, self.ndf, downsample=True)
+        self.block3 = DBlock(self.ndf, self.ndf, downsample=False)
+        self.block4 = DBlock(self.ndf, self.ndf, downsample=False)
         self.l5 = SNLinear(self.ndf, 1)
         self.activation = nn.ReLU(True)
 
         # Initialise the weights
         nn.init.xavier_uniform_(self.l5.weight.data, 1.0)
 
-    def train_step(self, real_batch, netG, optD, log_data, device=None, global_step=None, **kwargs):
-        return base.BaseDiscriminator.train_step(self, real_batch, netG, optD, log_data, device, global_step, **kwargs)
-    
+    def train_step(
+        self, real_batch, netG, optD, log_data, device=None, global_step=None, **kwargs
+    ):
+        return base.BaseDiscriminator.train_step(
+            self, real_batch, netG, optD, log_data, device, global_step, **kwargs
+        )
+
     #    return super(base.BaseDiscriminator, self).train_step(real_batch, netD, optG, log_data, device, global_step, scaler, **kwargs)
