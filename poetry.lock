@@ -2178,8 +2178,8 @@ yapf = "*"
 [package.source]
 type = "git"
 url = "https://github.com/kwotsin/mimicry.git"
-reference = "0.1.16"
-resolved_reference = "345b1e05fbd4450e87f6f21a7fc845fb1771ec18"
+reference = "a7fda06c4aff1e6af8dc4c4a35ed6636e434c766"
+resolved_reference = "a7fda06c4aff1e6af8dc4c4a35ed6636e434c766"
 
 [[package]]
 name = "torchvision"
@@ -2398,4 +2398,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = "~3.8"
-content-hash = "5d1efa568db480064884f8541f406606bd63dfa9bac4e15f1d17a60fe38f4581"
+content-hash = "6fb76b58e7b94e1a8a4eb04bb1060830920d3156a4db711545393b74742ff227"

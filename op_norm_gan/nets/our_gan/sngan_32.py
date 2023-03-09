@@ -1,10 +1,11 @@
+
 """
-Implementation of SNGAN for image size 32.
+https://github.com/kwotsin/mimicry/blob/master/torch_mimicry/nets/sngan/sngan_32.py
 """
 import torch
 import torch.nn as nn
 from torch_mimicry.modules.layers import SNLinear
-from torch_mimicry.nets.sngan import SNGANDiscriminator32, SNGANGenerator32, sngan_base
+from torch_mimicry.nets.sngan import SNGANDiscriminator32, SNGANGenerator32
 
 from nets.our_gan import base
 
@@ -90,5 +91,3 @@ class SNGANDiscriminator32(SNGANDiscriminator32, base.BaseDiscriminator):
         return base.BaseDiscriminator.train_step(
             self, real_batch, netG, optD, log_data, device, global_step, **kwargs
         )
-
-    #    return super(base.BaseDiscriminator, self).train_step(real_batch, netD, optG, log_data, device, global_step, scaler, **kwargs)

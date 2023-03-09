@@ -7,10 +7,6 @@ from torch_mimicry.nets.gan import BaseDiscriminator, BaseGenerator
 from modules.spectral_norm import EffSpectralNorm
 
 
-# from torch_mimicry.nets.basemodel import basemodel
-# from torch_mimicry.modules import losses
-
-
 def compute_norm_penalty(model, scale=1.0):
     loss = 0
     for p in model.modules():
@@ -49,13 +45,6 @@ class BaseGenerator(BaseGenerator):
 
         return errG
 
-    # def train_step(self, real_batch, netG, optD, log_data, device=None, global_step=None, **kwargs):
-    #     log_data = super().train_step(real_batch, netG, optD, log_data, device, global_step, **kwargs)
-    #     for i, p in enumerate(self.modules()):
-    #         if EffSpectralNorm in type(p).__bases__:
-    #             log_data.add_metric(f'g_gamma_{i}', p.gamma.item())
-    #     return log_data
-
 
 class BaseDiscriminator(BaseDiscriminator):
     r"""
@@ -85,9 +74,3 @@ class BaseDiscriminator(BaseDiscriminator):
 
         return errD
 
-    # def train_step(self, real_batch, netG, optD, log_data, device=None, global_step=None, **kwargs):
-    #     log_data = super().train_step(real_batch, netG, optD, log_data, device, global_step, **kwargs)
-    #     for i, p in enumerate(self.modules()):
-    #         if EffSpectralNorm in type(p).__bases__:
-    #             log_data.add_metric(f'd_gamma_{i}', p.gamma.item())
-    #     return log_data
