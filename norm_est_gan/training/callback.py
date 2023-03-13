@@ -14,6 +14,7 @@ from torchvision.utils import make_grid
 
 from norm_est_gan.modules.spectral_norm import NormEstimation
 from norm_est_gan.modules.svd import get_sing_vals
+from norm_est_gan.registry import Registry
 
 
 class Callback(ABC):
@@ -27,26 +28,26 @@ class Callback(ABC):
         self.cnt = 0
 
 
-class CallbackRegistry:
-    registry = {}
+# class CallbackRegistry:
+#     registry = {}
 
-    @classmethod
-    def register(cls, name: Optional[str] = None) -> Callable:
-        def inner_wrapper(wrapped_class: Callback) -> Callback:
-            if name is None:
-                name_ = wrapped_class.__name__
-            else:
-                name_ = name
-            cls.registry[name_] = wrapped_class
-            return wrapped_class
+#     @classmethod
+#     def register(cls, name: Optional[str] = None) -> Callable:
+#         def inner_wrapper(wrapped_class: Callback) -> Callback:
+#             if name is None:
+#                 name_ = wrapped_class.__name__
+#             else:
+#                 name_ = name
+#             cls.registry[name_] = wrapped_class
+#             return wrapped_class
 
-        return inner_wrapper
+#         return inner_wrapper
 
-    @classmethod
-    def create(cls, name: str, **kwargs) -> Callback:
-        model = cls.registry[name]
-        model = model(**kwargs)
-        return model
+#     @classmethod
+#     def create(cls, name: str, **kwargs) -> Callback:
+#         model = cls.registry[name]
+#         model = model(**kwargs)
+#         return model
 
 
 @torch.no_grad()
@@ -70,7 +71,7 @@ def get_spectr(model):
     return spectr
 
 
-@CallbackRegistry.register()
+@Registry.register()
 class LogSigularVals(Callback):
     def __init__(
         self,

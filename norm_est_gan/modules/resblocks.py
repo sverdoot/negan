@@ -40,6 +40,7 @@ class GBlock(GBlock):
         num_classes=0,
         spectral_norm=False,
         norm='sn',
+        convl=nn.Conv2d
     ):
         super().__init__(
             in_channels,

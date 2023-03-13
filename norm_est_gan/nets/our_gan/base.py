@@ -41,7 +41,8 @@ class BaseGenerator(BaseGenerator):
         """
         # Compute loss and backprop
         errG = super().compute_gan_loss(output)
-        errG += compute_norm_penalty(self, scale=self.np_scale)
+        if self.np_scale > 0:
+            errG += compute_norm_penalty(self, scale=self.np_scale)
 
         return errG
 
@@ -70,6 +71,7 @@ class BaseDiscriminator(BaseDiscriminator):
             errD (Tensor): A batch of GAN losses for the discriminator.
         """
         errD = super().compute_gan_loss(output_real, output_fake)
-        errD += compute_norm_penalty(self, scale=self.np_scale)
+        if self.np_scale > 0:
+            errD += compute_norm_penalty(self, scale=self.np_scale)
 
         return errD

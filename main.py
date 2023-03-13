@@ -7,7 +7,7 @@ import torch_mimicry as mmc
 from torch import nn
 
 from norm_est_gan.nets.our_gan import sngan_32
-from norm_est_gan.training.callback import LogSigularVals  # , LogGamma
+from norm_est_gan.training.callback import LogSigularVals
 from norm_est_gan.training.trainer import CustomTrainer
 
 

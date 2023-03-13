@@ -2,77 +2,13 @@
 Implementation of spectral normalization for GANs.
 """
 from abc import abstractmethod
+from typing import Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .svd import get_sing_vals, get_sing_vals_simple
-
-
-class SpectralNorm(object):
-    r"""
-    Spectral Normalization for GANs (Miyato 2018).
-
-    Inheritable class for performing spectral normalization of weights,
-    as approximated using power iteration.
-
-    Details: See Algorithm 1 of Appendix A (Miyato 2018).
-
-    Attributes:
-        n_dim (int): Number of dimensions.
-        num_iters (int): Number of iterations for power iter.
-        eps (float): Epsilon for zero division tolerance when normalizing.
-    """
-
-    def __init__(self, n_dim, num_iters=1, eps=1e-12):
-        self.num_iters = num_iters
-        self.eps = eps
-
-        # Register a singular vector for each sigma
-        self.register_buffer("sn_u", torch.randn(1, n_dim))
-        self.register_buffer("sn_sigma", torch.ones(1))
-        self.register_forward_pre_hook(
-            lambda m, i: setattr(m, "pad_to", i[0].shape[2:])
-        )
-
-    @property
-    def u(self):
-        return getattr(self, "sn_u")
-
-    @property
-    def sigma(self):
-        return getattr(self, "sn_sigma")
-
-    def _power_iteration(self, W, u, num_iters, eps=1e-12):
-        with torch.no_grad():
-            for _ in range(num_iters):
-                v = F.normalize(torch.matmul(u, W), eps=eps)
-                u = F.normalize(torch.matmul(v, W.t()), eps=eps)
-
-        # Note: must have gradients, otherwise weights do not get updated!
-        sigma = torch.mm(u, torch.mm(W, v.t()))
-
-        return sigma, u, v
-
-    def sn_weights(self):
-        r"""
-        Spectrally normalize current weights of the layer.
-        """
-        W = self.weight.view(self.weight.shape[0], -1)
-
-        # Power iteration
-        sigma, u, v = self._power_iteration(
-            W=W, u=self.u, num_iters=self.num_iters, eps=self.eps
-        )
-
-        # Update only during training
-        if self.training:
-            with torch.no_grad():
-                self.sigma[:] = sigma
-                self.u[:] = u
-
-        return self.weight / sigma
+from .svd import get_sing_vals
 
 
 class NormEstimation(object):
@@ -90,17 +26,19 @@ class NormEstimation(object):
         eps (float): Epsilon for zero division tolerance when normalizing.
     """
 
-    def __init__(self, n_dim=0, num_iters=1, eps=1e-12, update_every=100, n_samp=10):
-        self.num_iters = num_iters
-        self.eps = eps
+    def __init__(self, n_dim=0, upd_gamma_every=1000, n_samp=10, upd_est_every=1, denom=0.25):
         self.n_dim = n_dim
-        self.update_every = update_every
-        self.cnt = 0
+        self.upd_gamma_every = upd_gamma_every
+        self.upd_est_every = upd_est_every
+        self.gamma_cnt = 0
+        self.est_cnt = 0
         self.pad_to = (0, 0)
         self.n_samp = n_samp
+        self.denom = denom
 
         # Register a singular vector for each gamma
         self.register_buffer("sn_gamma", torch.ones(1, requires_grad=False))
+        #self.register_buffer("sn_estimate", torch.ones(1, requires_grad=False))
         self.register_forward_pre_hook(
             lambda m, i: setattr(m, "pad_to", i[0].shape[2:])
         )
@@ -136,8 +74,8 @@ class NormEstimation(object):
         W = self.weight
 
         if self.training:
-            self.cnt += 1
-            if self.cnt % self.update_every == 1:
+            self.gamma_cnt += 1
+            if self.gamma_cnt % self.upd_gamma_every == 1:
                 gamma, n_dim = NormEstimation._compute_gamma(
                     W, self.pad_to, self.stride
                 )
@@ -145,16 +83,19 @@ class NormEstimation(object):
                     self.gamma[:] = gamma
                     self.n_dim = n_dim
 
-        device = next(self.parameters()).device
-        samp = torch.randn([self.n_samp, W.shape[1]] + list(self.pad_to)).to(device)
-        out = self.forward(samp)
-        normsq = ((out**2).sum(list(range(len(out.shape)))[1:])).mean(0)
+        #self.est_cnt += 1
+        #if self.est_cnt % self.upd_est_every == 1:
+        samp = torch.randn([self.n_samp, W.shape[1]] + list(self.pad_to), device=W.device)
+        out = self._forward(samp)
+        normsq = ((out ** 2).sum(list(range(len(out.shape)))[1:])).mean(0)
         estimate = normsq / (self.gamma * self.n_dim)
+        #self.estimate = estimate #.detach()
+            
         return estimate
 
     def sn_weights(self):
-        return self.weight
-
+        return self.weight / self.estimate_norm() ** .5 / self.denom
+    
 
 class NEConv2d(nn.Conv2d, NormEstimation):
     r"""
@@ -169,7 +110,18 @@ class NEConv2d(nn.Conv2d, NormEstimation):
         nn.Conv2d.__init__(self, in_channels, out_channels, *args, **kwargs)
 
         NormEstimation.__init__(
-            self, n_dim=out_channels, num_iters=kwargs.get("num_iters", 1)
+            self, n_dim=out_channels
+        )
+        
+    def _forward(self, x):
+        return F.conv2d(
+            input=x,
+            weight=self.weight,
+            bias=None,
+            stride=self.stride,
+            padding=self.padding,
+            dilation=self.dilation,
+            groups=self.groups,
         )
 
     def forward(self, x):

@@ -31,23 +31,17 @@ class SNGANGenerator32(SNGANGenerator32, base.BaseGenerator):
     """
 
     def __init__(self, nz=128, ngf=256, bottom_width=4, **kwargs):
-        # super(base.BaseGenerator, self).__init__(**kwargs)
         norm = kwargs.pop("norm", "norm_est")
         super(SNGANGenerator32, self).__init__(
             nz=nz, ngf=ngf, bottom_width=bottom_width
         )  # , **kwargs)
         base.BaseGenerator.__post_init__(self, **kwargs)
 
-        # if norm == "norm_est":
-        #     from norm_est_gan.modules.resblocks import GBlock
-        # else:
-        #     from torch_mimicry.modules.resblocks import GBlock
-
         # Build the layers
         self.l1 = nn.Linear(self.nz, (self.bottom_width**2) * self.ngf)
-        self.block2 = GBlock(self.ngf, self.ngf, upsample=True, norm=norm)
-        self.block3 = GBlock(self.ngf, self.ngf, upsample=True, norm=norm)
-        self.block4 = GBlock(self.ngf, self.ngf, upsample=True, norm=norm)
+        self.block2 = GBlock(self.ngf, self.ngf, upsample=True)#, norm=norm)
+        self.block3 = GBlock(self.ngf, self.ngf, upsample=True)#, norm=norm)
+        self.block4 = GBlock(self.ngf, self.ngf, upsample=True)#, norm=norm)
         self.b5 = nn.BatchNorm2d(self.ngf)
         self.c5 = nn.Conv2d(self.ngf, 3, 3, 1, padding=1)
         self.activation = nn.ReLU(True)
@@ -77,11 +71,6 @@ class SNGANDiscriminator32(SNGANDiscriminator32, base.BaseDiscriminator):
         norm = kwargs.pop("norm", "norm_est")
         super(SNGANDiscriminator32, self).__init__(ndf=ndf)  # , **kwargs)
         base.BaseDiscriminator.__post_init__(self, **kwargs)
-
-        # if norm == "norm_est":
-        #     from modules.resblocks import DBlock, DBlockOptimized
-        # else:
-        #     from torch_mimicry.modules.resblocks import DBlock, DBlockOptimized
 
         # Build layers
         self.block1 = DBlockOptimized(3, self.ndf, norm=norm)
