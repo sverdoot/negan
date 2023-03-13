@@ -8,8 +8,8 @@ import math
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_mimicry.modules import ConditionalBatchNorm2d  # , SNConv2d
-from torch_mimicry.modules.resblocks import DBlock, DBlockOptimized, GBlock
 from torch_mimicry.modules import SNConv2d
+from torch_mimicry.modules.resblocks import DBlock, DBlockOptimized, GBlock
 
 from .spectral_norm import NEConv2d
 
@@ -39,8 +39,8 @@ class GBlock(GBlock):
         upsample=False,
         num_classes=0,
         spectral_norm=False,
-        norm='sn',
-        convl=nn.Conv2d
+        norm="sn",
+        convl=nn.Conv2d,
     ):
         super().__init__(
             in_channels,
@@ -64,10 +64,10 @@ class GBlock(GBlock):
         # Build the layers
         # Note: Can't use something like self.conv = SNConv2d to save code length
         # this results in somehow spectral norm working worse consistently.
-        if norm == 'norm_est':
+        if norm == "norm_est":
             self.c1 = NEConv2d(self.in_channels, self.hidden_channels, 3, 1, padding=1)
-            self.c2 = NEConv2d(self.hidden_channels, self.out_channels, 3, 1, padding=1) 
-        elif self.spectral_norm:   
+            self.c2 = NEConv2d(self.hidden_channels, self.out_channels, 3, 1, padding=1)
+        elif self.spectral_norm:
             self.c1 = SNConv2d(self.in_channels, self.hidden_channels, 3, 1, padding=1)
             self.c2 = SNConv2d(self.hidden_channels, self.out_channels, 3, 1, padding=1)
         else:
@@ -117,7 +117,7 @@ class DBlock(DBlock):
         hidden_channels=None,
         downsample=False,
         spectral_norm=True,
-        norm='sn',
+        norm="sn",
     ):
         super().__init__(
             in_channels, out_channels, hidden_channels, downsample, spectral_norm
@@ -132,7 +132,7 @@ class DBlock(DBlock):
         self.spectral_norm = spectral_norm
 
         # Build the layers
-        if norm == 'norm_est':
+        if norm == "norm_est":
             self.c1 = NEConv2d(self.in_channels, self.hidden_channels, 3, 1, 1)
             self.c2 = NEConv2d(self.hidden_channels, self.out_channels, 3, 1, 1)
         elif self.spectral_norm:
@@ -149,7 +149,7 @@ class DBlock(DBlock):
 
         # Shortcut layer
         if self.learnable_sc:
-            if norm == 'norm_est':
+            if norm == "norm_est":
                 self.c_sc = NEConv2d(in_channels, out_channels, 1, 1, 0)
             if self.spectral_norm:
                 self.c_sc = SNConv2d(in_channels, out_channels, 1, 1, 0)
@@ -171,14 +171,20 @@ class DBlockOptimized(DBlockOptimized):
         spectral_norm (bool): If True, uses spectral norm for convolutional layers.
     """
 
-    def __init__(self, in_channels, out_channels, spectral_norm=True, norm='sn',):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        spectral_norm=True,
+        norm="sn",
+    ):
         super().__init__(in_channels, out_channels, spectral_norm)
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.spectral_norm = spectral_norm
 
         # Build the layers
-        if norm == 'norm_est':
+        if norm == "norm_est":
             self.c1 = NEConv2d(self.in_channels, self.out_channels, 3, 1, 1)
             self.c2 = NEConv2d(self.out_channels, self.out_channels, 3, 1, 1)
             self.c_sc = NEConv2d(self.in_channels, self.out_channels, 1, 1, 0)

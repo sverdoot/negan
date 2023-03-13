@@ -54,10 +54,7 @@ class Callback(ABC):
 def get_spectr(model):
     spectr = dict()
     for i, mod in enumerate(model.modules()):
-        if (
-            NormEstimation in type(mod).__bases__
-            or SpectralNorm in type(mod).__bases__
-        ):
+        if NormEstimation in type(mod).__bases__ or SpectralNorm in type(mod).__bases__:
             singular_vals = get_sing_vals(mod.weight, mod.pad_to, mod.stride)
             singular_vals = torch.sort(singular_vals.flatten(), descending=True)[0]
             spectr[i] = singular_vals.detach()

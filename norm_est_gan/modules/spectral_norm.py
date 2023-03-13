@@ -26,7 +26,9 @@ class NormEstimation(object):
         eps (float): Epsilon for zero division tolerance when normalizing.
     """
 
-    def __init__(self, n_dim=0, upd_gamma_every=1000, n_samp=10, upd_est_every=1, denom=0.25):
+    def __init__(
+        self, n_dim=0, upd_gamma_every=1000, n_samp=10, upd_est_every=1, denom=0.5
+    ):
         self.n_dim = n_dim
         self.upd_gamma_every = upd_gamma_every
         self.upd_est_every = upd_est_every
@@ -38,7 +40,7 @@ class NormEstimation(object):
 
         # Register a singular vector for each gamma
         self.register_buffer("sn_gamma", torch.ones(1, requires_grad=False))
-        #self.register_buffer("sn_estimate", torch.ones(1, requires_grad=False))
+        # self.register_buffer("sn_estimate", torch.ones(1, requires_grad=False))
         self.register_forward_pre_hook(
             lambda m, i: setattr(m, "pad_to", i[0].shape[2:])
         )
@@ -83,19 +85,21 @@ class NormEstimation(object):
                     self.gamma[:] = gamma
                     self.n_dim = n_dim
 
-        #self.est_cnt += 1
-        #if self.est_cnt % self.upd_est_every == 1:
-        samp = torch.randn([self.n_samp, W.shape[1]] + list(self.pad_to), device=W.device)
+        # self.est_cnt += 1
+        # if self.est_cnt % self.upd_est_every == 1:
+        samp = torch.randn(
+            [self.n_samp, W.shape[1]] + list(self.pad_to), device=W.device
+        )
         out = self._forward(samp)
-        normsq = ((out ** 2).sum(list(range(len(out.shape)))[1:])).mean(0)
+        normsq = ((out**2).sum(list(range(len(out.shape)))[1:])).mean(0)
         estimate = normsq / (self.gamma * self.n_dim)
-        #self.estimate = estimate #.detach()
-            
+        # self.estimate = estimate #.detach()
+
         return estimate
 
     def sn_weights(self):
-        return self.weight / self.estimate_norm() ** .5 / self.denom
-    
+        return self.weight / self.estimate_norm() ** 0.5 / self.denom
+
 
 class NEConv2d(nn.Conv2d, NormEstimation):
     r"""
@@ -109,10 +113,8 @@ class NEConv2d(nn.Conv2d, NormEstimation):
     def __init__(self, in_channels, out_channels, *args, **kwargs):
         nn.Conv2d.__init__(self, in_channels, out_channels, *args, **kwargs)
 
-        NormEstimation.__init__(
-            self, n_dim=out_channels
-        )
-        
+        NormEstimation.__init__(self, n_dim=out_channels)
+
     def _forward(self, x):
         return F.conv2d(
             input=x,
@@ -134,41 +136,3 @@ class NEConv2d(nn.Conv2d, NormEstimation):
             dilation=self.dilation,
             groups=self.groups,
         )
-
-
-# class SNLinear(nn.Linear, SpectralNorm):
-#     r"""
-#     Spectrally normalized layer for Linear.
-
-#     Attributes:
-#         in_features (int): Input feature dimensions.
-#         out_features (int): Output feature dimensions.
-#     """
-
-#     def __init__(self, in_features, out_features, *args, **kwargs):
-#         nn.Linear.__init__(self, in_features, out_features, *args, **kwargs)
-
-#         SpectralNorm.__init__(
-#             self, n_dim=out_features, num_iters=kwargs.get("num_iters", 1)
-#         )
-
-#     def forward(self, x):
-#         return F.linear(input=x, weight=self.sn_weights(), bias=self.bias)
-
-
-# class SNEmbedding(nn.Embedding, SpectralNorm):
-#     r"""
-#     Spectrally normalized layer for Embedding.
-
-#     Attributes:
-#         num_embeddings (int): Number of embeddings.
-#         embedding_dim (int): Dimensions of each embedding vector
-#     """
-
-#     def __init__(self, num_embeddings, embedding_dim, *args, **kwargs):
-#         nn.Embedding.__init__(self, num_embeddings, embedding_dim, *args, **kwargs)
-
-#         SpectralNorm.__init__(self, n_dim=num_embeddings)
-
-#     def forward(self, x):
-#         return F.embedding(input=x, weight=self.sn_weights())
