@@ -7,7 +7,7 @@ from torch_mimicry.modules.layers import SNLinear
 from torch_mimicry.nets.sngan import SNGANDiscriminator32, SNGANGenerator32
 
 from norm_est_gan.modules.resblocks import DBlock, DBlockOptimized, GBlock
-from norm_est_gan.nets.our_gan import base
+from norm_est_gan.nets import base
 
 
 # def SNConv2d(*args, default=True, **kwargs):
@@ -33,7 +33,7 @@ class SNGANGenerator32(SNGANGenerator32, base.BaseGenerator):
     """
 
     def __init__(self, nz=128, ngf=256, bottom_width=4, **kwargs):
-        norm = kwargs.pop("norm", "norm_est")
+        spectral_norm = kwargs.pop("spectral_norm", None)
         super(SNGANGenerator32, self).__init__(
             nz=nz, ngf=ngf, bottom_width=bottom_width
         )  # , **kwargs)
@@ -41,9 +41,9 @@ class SNGANGenerator32(SNGANGenerator32, base.BaseGenerator):
 
         # Build the layers
         self.l1 = nn.Linear(self.nz, (self.bottom_width**2) * self.ngf)
-        self.block2 = GBlock(self.ngf, self.ngf, upsample=True)  # , norm=norm)
-        self.block3 = GBlock(self.ngf, self.ngf, upsample=True)  # , norm=norm)
-        self.block4 = GBlock(self.ngf, self.ngf, upsample=True)  # , norm=norm)
+        self.block2 = GBlock(self.ngf, self.ngf, upsample=True)
+        self.block3 = GBlock(self.ngf, self.ngf, upsample=True)
+        self.block4 = GBlock(self.ngf, self.ngf, upsample=True)
         self.b5 = nn.BatchNorm2d(self.ngf)
         self.c5 = nn.Conv2d(self.ngf, 3, 3, 1, padding=1)
         self.activation = nn.ReLU(True)
@@ -70,15 +70,15 @@ class SNGANDiscriminator32(SNGANDiscriminator32, base.BaseDiscriminator):
     """
 
     def __init__(self, ndf=128, **kwargs):
-        norm = kwargs.pop("norm", "norm_est")
+        spectral_norm = kwargs.pop("spectral_norm", None)
         super(SNGANDiscriminator32, self).__init__(ndf=ndf)  # , **kwargs)
         base.BaseDiscriminator.__post_init__(self, **kwargs)
 
         # Build layers
-        self.block1 = DBlockOptimized(3, self.ndf, norm=norm)
-        self.block2 = DBlock(self.ndf, self.ndf, downsample=True, norm=norm)
-        self.block3 = DBlock(self.ndf, self.ndf, downsample=False, norm=norm)
-        self.block4 = DBlock(self.ndf, self.ndf, downsample=False, norm=norm)
+        self.block1 = DBlockOptimized(3, self.ndf, sn=spectral_norm)
+        self.block2 = DBlock(self.ndf, self.ndf, downsample=True, sn=spectral_norm)
+        self.block3 = DBlock(self.ndf, self.ndf, downsample=False, sn=spectral_norm)
+        self.block4 = DBlock(self.ndf, self.ndf, downsample=False, sn=spectral_norm)
         self.l5 = SNLinear(self.ndf, 1)
         self.activation = nn.ReLU(True)
 

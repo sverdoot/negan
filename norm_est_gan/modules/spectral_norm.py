@@ -1,138 +1,241 @@
 """
 Implementation of spectral normalization for GANs.
 """
-from abc import abstractmethod
-from typing import Optional
+from typing import Any, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.utils.spectral_norm import SpectralNormStateDictHook
 
 from .svd import get_sing_vals
 
 
-class NormEstimation(object):
-    r"""
-    Spectral Normalization for GANs (Miyato 2018).
-
-    Inheritable class for performing spectral normalization of weights,
-    as approximated using power iteration.
-
-    Details: See Algorithm 1 of Appendix A (Miyato 2018).
-
-    Attributes:
-        n_dim (int): Number of dimensions.
-        num_iters (int): Number of iterations for power iter.
-        eps (float): Epsilon for zero division tolerance when normalizing.
-    """
-
+class SpectralNorm:
     def __init__(
-        self, n_dim=0, upd_gamma_every=1000, n_samp=10, upd_est_every=1, denom=0.5
+        self,
+        upd_gamma_every=1000,
+        n_samp=10,
+        denom=None,
+        default=False,
     ):
-        self.n_dim = n_dim
         self.upd_gamma_every = upd_gamma_every
-        self.upd_est_every = upd_est_every
-        self.gamma_cnt = 0
-        self.est_cnt = 0
-        self.pad_to = (0, 0)
         self.n_samp = n_samp
         self.denom = denom
+        self.default = default
 
-        # Register a singular vector for each gamma
-        self.register_buffer("sn_gamma", torch.ones(1, requires_grad=False))
-        # self.register_buffer("sn_estimate", torch.ones(1, requires_grad=False))
-        self.register_forward_pre_hook(
-            lambda m, i: setattr(m, "pad_to", i[0].shape[2:])
-        )
+    def __call__(self, module: nn.Module, name: str = "weight") -> nn.Module:
+        if self.default == True:
+            return nn.utils.spectral_norm(module, name=name)
+        else:
+            NormEstimation.apply(
+                module,
+                name,
+                self.upd_gamma_every,
+                self.n_samp,
+                self.denom,
+            )
+            return module
 
-    @property
-    def gamma(self):
-        return getattr(self, "sn_gamma")
 
+class NormEstimation:
+    r"""
+    Attributes:
+        # n_dim (int): Number of dimensions.
+        # num_iters (int): Number of iterations for power iter.
+        # eps (float): Epsilon for zero division tolerance when normalizing.
+    """
+    weight: str = "weight"
+    upd_gamma_every: int = 1000
+    n_samp: int = 10
+    upd_est_every: int = 1
+    denom: Optional[float] = None
+
+    def __init__(
+        self,
+        name: str = "weight",
+        upd_gamma_every: int = 1000,
+        n_samp: int = 10,
+        denom: Optional[float] = None,
+    ):
+        self.name = name
+        self.upd_gamma_every = upd_gamma_every
+        self.n_samp = n_samp
+        self.denom = denom
+        
+    def forward(self, module, x) -> torch.Tensor:
+        if isinstance(module, nn.Conv2d):
+            return F.conv2d(
+                input=x,
+                weight=getattr(module, f"{self.name}_orig"),
+                bias=None,
+                stride=module.stride,
+                padding=module.padding,
+                dilation=module.dilation,
+                groups=module.groups,
+            )
+        elif isinstance(module, nn.Linear):
+            return F.linear(x, getattr(module, f"{self.name}_orig"), bias=None)
+        elif isinstance(module, nn.Embedding):
+            return F.embedding(x, getattr(module, f"{self.name}_orig"))
+        else:
+            RuntimeError("")
+
+    @staticmethod
     @torch.no_grad()
-    @abstractmethod
-    def _compute_gamma(W, pad_to, stride):
+    def compute_gamma(W: torch.Tensor, pad_to: Tuple[int, int], stride: int):
         sing_vals = torch.sort(
             get_sing_vals(W, pad_to, stride).flatten(), descending=True
         )[0]
         second_norm = sing_vals[0]
         frob_norm = torch.sqrt((sing_vals**2).sum())
         n_dim = len(sing_vals)
-        gamma = frob_norm**2 / second_norm**2 / n_dim
+        gamma = frob_norm ** 2 / second_norm ** 2 / n_dim
         return gamma, n_dim
 
-    @abstractmethod
-    def _estimate(module: nn.Module, pad_to, stride: int, n_samp: int = 100):
-        W = module.weight
-        gamma, n_dim = NormEstimation._compute_gamma(W, pad_to, stride)
-        device = W.device
-        samp = torch.randn([n_samp, W.shape[1]] + list(pad_to)).to(device)
-        out = module.forward(samp)
-        normsq = ((out**2).sum(list(range(len(out.shape)))[1:])).mean(0)
-        estimate = normsq / (gamma * n_dim)
-        return estimate
-
-    def estimate_norm(self):
-        W = self.weight
-
-        if self.training:
-            self.gamma_cnt += 1
-            if self.gamma_cnt % self.upd_gamma_every == 1:
-                gamma, n_dim = NormEstimation._compute_gamma(
-                    W, self.pad_to, self.stride
-                )
-                with torch.no_grad():
-                    self.gamma[:] = gamma
-                    self.n_dim = n_dim
-
-        # self.est_cnt += 1
-        # if self.est_cnt % self.upd_est_every == 1:
+    def upd_gamma(self, module: nn.Module):
+        W = getattr(module, f"{self.name}_orig")
+        cnt = getattr(module, f"{self.name}_cnt").item()
+        setattr(module, f"{self.name}_cnt", torch.tensor([cnt + 1], device=W.device))
+        if cnt % self.upd_gamma_every == 0:
+            gamma, n_dim = NormEstimation.compute_gamma(
+                W, getattr(module, f"{self.name}_pad_to"), module.stride
+            )
+            with torch.no_grad():
+                setattr(module, f"{self.name}_gamma", gamma)
+                setattr(module, f"{self.name}_ndim", torch.tensor([n_dim], device=W.device))
+                
+    def estimate_norm(self, module: nn.Module):
+        W = getattr(module, f"{self.name}_orig")
         samp = torch.randn(
-            [self.n_samp, W.shape[1]] + list(self.pad_to), device=W.device
+            [self.n_samp, W.shape[1]] + list(getattr(module, f"{self.name}_pad_to")),
+            device=W.device,
         )
-        out = self._forward(samp)
-        normsq = ((out**2).sum(list(range(len(out.shape)))[1:])).mean(0)
-        estimate = normsq / (self.gamma * self.n_dim)
-        # self.estimate = estimate #.detach()
-
+        out = self.forward(module, samp)
+        normsq = ((out ** 2).sum(list(range(len(out.shape)))[1:])).mean(0)
+        estimate = normsq / (
+            getattr(module, f"{self.name}_gamma") * getattr(module, f"{self.name}_ndim")
+        )
         return estimate
 
-    def sn_weights(self):
-        return self.weight / self.estimate_norm() ** 0.5 / self.denom
+    def compute_weight(self, module):
+        weight = getattr(module, f"{self.name}_orig")
+        if module.training:
+            self.upd_gamma(module)
+        if self.denom is not None:
+            est = self.estimate_norm(module)
+            weight = weight / est ** 0.5 / self.denom
+        return weight
 
+    def __call__(self, module: nn.Module, inputs: Any) -> None:
+        setattr(module, self.name, self.compute_weight(module))
 
-class NEConv2d(nn.Conv2d, NormEstimation):
-    r"""
-    Spectrally normalized layer for Conv2d.
+    @staticmethod
+    def apply(module: nn.Module, name, upd_gamma_every, n_samp, denom):
+        for _, hook in module._forward_pre_hooks.items():
+            if isinstance(hook, NormEstimation) and hook.name == name:
+                raise RuntimeError(
+                    "Cannot register two spectral_norm hooks on "
+                    "the same parameter {}".format(name)
+                )
 
-    Attributes:
-        in_channels (int): Input channel dimension.
-        out_channels (int): Output channel dimensions.
-    """
+        fn = NormEstimation(name, upd_gamma_every, n_samp, denom)
+        weight = module._parameters[name]
+        if weight is None:
+            raise ValueError(
+                f"`SpectralNorm` cannot be applied as parameter `{name}` is None"
+            )
+        if isinstance(weight, torch.nn.parameter.UninitializedParameter):
+            raise ValueError(
+                "The module passed to `SpectralNorm` can't have uninitialized parameters. "
+                "Make sure to run the dummy forward before applying spectral normalization"
+            )
 
-    def __init__(self, in_channels, out_channels, *args, **kwargs):
-        nn.Conv2d.__init__(self, in_channels, out_channels, *args, **kwargs)
+        delattr(module, fn.name)
+        module.register_parameter(f"{fn.name}_orig", weight)
+        # We still need to assign weight back as fn.name because all sorts of
+        # things may assume that it exists, e.g., when initializing weights.
+        # However, we can't directly assign as it could be an nn.Parameter and
+        # gets added as a parameter. Instead, we register weight.data as a plain
+        # attribute.
+        setattr(module, fn.name, weight.data)
+        # setattr(module, f"{fn.name}_cnt", 0)
+        # Register a singular vector for each gamma
+        module.register_buffer(f"{fn.name}_gamma", torch.ones(1, requires_grad=False))
+        module.register_buffer(f"{fn.name}_ndim", torch.ones(1, dtype=torch.long, requires_grad=False))
+        module.register_buffer(f"{fn.name}_cnt", torch.zeros(1, dtype=torch.long, requires_grad=False))
 
-        NormEstimation.__init__(self, n_dim=out_channels)
-
-    def _forward(self, x):
-        return F.conv2d(
-            input=x,
-            weight=self.weight,
-            bias=None,
-            stride=self.stride,
-            padding=self.padding,
-            dilation=self.dilation,
-            groups=self.groups,
+        module.register_forward_pre_hook(
+            lambda m, i: setattr(m, f"{fn.name}_pad_to", i[0].shape[2:])
         )
+        module.register_forward_pre_hook(fn)
+        module._register_state_dict_hook(SpectralNormStateDictHook(fn))
+        # module._register_load_state_dict_pre_hook(SpectralNormLoadStateDictPreHook(fn))
+        return fn
 
-    def forward(self, x):
-        return F.conv2d(
-            input=x,
-            weight=self.sn_weights(),
-            bias=self.bias,
-            stride=self.stride,
-            padding=self.padding,
-            dilation=self.dilation,
-            groups=self.groups,
-        )
+
+# class SpectralNormLoadStateDictPreHook:
+#     # See docstring of SpectralNorm._version on the changes to spectral_norm.
+#     def __init__(self, fn) -> None:
+#         self.fn = fn
+
+#     def __call__(
+#         self,
+#         state_dict,
+#         prefix,
+#         local_metadata,
+#         strict,
+#         missing_keys,
+#         unexpected_keys,
+#         error_msgs,
+#     ) -> None:
+#         fn = self.fn
+#         version = local_metadata.get("spectral_norm", {}).get(
+#             fn.name + ".version", None
+#         )
+#         if version is None or version < 1:
+#             weight_key = prefix + fn.name
+#             if (
+#                 version is None
+#                 and all(weight_key + s in state_dict for s in ("_orig", "_gamma"))
+#                 and weight_key not in state_dict
+#             ):
+#                 # Detect if it is the updated state dict and just missing metadata.
+#                 # This could happen if the users are crafting a state dict themselves,
+#                 # so we just pretend that this is the newest.
+#                 return
+#             has_missing_keys = False
+#             for suffix in ("_orig", "", "_gamma"):
+#                 key = weight_key + suffix
+#                 if key not in state_dict:
+#                     has_missing_keys = True
+#                     if strict:
+#                         missing_keys.append(key)
+#             if has_missing_keys:
+#                 return
+            # with torch.no_grad():
+            #     weight_orig = state_dict[weight_key + '_orig']
+            #     weight = state_dict.pop(weight_key)
+            #     sigma = (weight_orig / weight).mean()
+            #     weight_mat = fn.reshape_weight_to_matrix(weight_orig)
+            #     u = state_dict[weight_key + '_u']
+            #     v = fn._solve_v_and_rescale(weight_mat, u, sigma)
+            #     state_dict[weight_key + '_v'] = v
+
+
+# This is a top level class because Py2 pickle doesn't like inner class nor an
+# instancemethod.
+# class SpectralNormStateDictHook:
+#     # See docstring of SpectralNorm._version on the changes to spectral_norm.
+#     def __init__(self, fn) -> None:
+#         self.fn = fn
+
+#     def __call__(self, module, state_dict, prefix, local_metadata) -> None:
+#         if "spectral_norm" not in local_metadata:
+#             local_metadata["spectral_norm"] = {}
+#         key = self.fn.name + ".version"
+#         if key in local_metadata["spectral_norm"]:
+#             raise RuntimeError(
+#                 "Unexpected key in metadata['spectral_norm']: {}".format(key)
+#             )
+#         local_metadata["spectral_norm"][key] = self.fn._version

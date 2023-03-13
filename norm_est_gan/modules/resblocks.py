@@ -7,11 +7,8 @@ import math
 
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_mimicry.modules import ConditionalBatchNorm2d  # , SNConv2d
-from torch_mimicry.modules import SNConv2d
+from torch_mimicry.modules import ConditionalBatchNorm2d
 from torch_mimicry.modules.resblocks import DBlock, DBlockOptimized, GBlock
-
-from .spectral_norm import NEConv2d
 
 
 class GBlock(GBlock):
@@ -39,8 +36,7 @@ class GBlock(GBlock):
         upsample=False,
         num_classes=0,
         spectral_norm=False,
-        norm="sn",
-        convl=nn.Conv2d,
+        sn=None,
     ):
         super().__init__(
             in_channels,
@@ -64,17 +60,10 @@ class GBlock(GBlock):
         # Build the layers
         # Note: Can't use something like self.conv = SNConv2d to save code length
         # this results in somehow spectral norm working worse consistently.
-        if norm == "norm_est":
-            self.c1 = NEConv2d(self.in_channels, self.hidden_channels, 3, 1, padding=1)
-            self.c2 = NEConv2d(self.hidden_channels, self.out_channels, 3, 1, padding=1)
-        elif self.spectral_norm:
-            self.c1 = SNConv2d(self.in_channels, self.hidden_channels, 3, 1, padding=1)
-            self.c2 = SNConv2d(self.hidden_channels, self.out_channels, 3, 1, padding=1)
-        else:
-            self.c1 = nn.Conv2d(self.in_channels, self.hidden_channels, 3, 1, padding=1)
-            self.c2 = nn.Conv2d(
-                self.hidden_channels, self.out_channels, 3, 1, padding=1
-            )
+        self.c1 = nn.Conv2d(self.in_channels, self.hidden_channels, 3, 1, padding=1)
+        self.c2 = nn.Conv2d(
+            self.hidden_channels, self.out_channels, 3, 1, padding=1
+        )
 
         if self.num_classes == 0:
             self.b1 = nn.BatchNorm2d(self.in_channels)
@@ -90,12 +79,15 @@ class GBlock(GBlock):
 
         # Shortcut layer
         if self.learnable_sc:
-            if self.spectral_norm:
-                self.c_sc = SNConv2d(in_channels, out_channels, 1, 1, padding=0)
-            else:
-                self.c_sc = nn.Conv2d(in_channels, out_channels, 1, 1, padding=0)
+            self.c_sc = nn.Conv2d(in_channels, out_channels, 1, 1, padding=0)
 
             nn.init.xavier_uniform_(self.c_sc.weight.data, 1.0)
+            
+        if spectral_norm and sn is not None:
+            self.c1 = sn(self.c1)
+            self.c2 = sn(self.c2)
+            if self.learnable_sc:
+                self.c_sc = sn(self.c_sc)
 
 
 class DBlock(DBlock):
@@ -117,8 +109,8 @@ class DBlock(DBlock):
         hidden_channels=None,
         downsample=False,
         spectral_norm=True,
-        norm="sn",
-    ):
+        sn=None,
+    ) -> None:
         super().__init__(
             in_channels, out_channels, hidden_channels, downsample, spectral_norm
         )
@@ -132,16 +124,8 @@ class DBlock(DBlock):
         self.spectral_norm = spectral_norm
 
         # Build the layers
-        if norm == "norm_est":
-            self.c1 = NEConv2d(self.in_channels, self.hidden_channels, 3, 1, 1)
-            self.c2 = NEConv2d(self.hidden_channels, self.out_channels, 3, 1, 1)
-        elif self.spectral_norm:
-            self.c1 = SNConv2d(self.in_channels, self.hidden_channels, 3, 1, 1)
-            self.c2 = SNConv2d(self.hidden_channels, self.out_channels, 3, 1, 1)
-        else:
-            self.c1 = nn.Conv2d(self.in_channels, self.hidden_channels, 3, 1, 1)
-            self.c2 = nn.Conv2d(self.hidden_channels, self.out_channels, 3, 1, 1)
-
+        self.c1 = nn.Conv2d(self.in_channels, self.hidden_channels, 3, 1, 1)
+        self.c2 = nn.Conv2d(self.hidden_channels, self.out_channels, 3, 1, 1)
         self.activation = nn.ReLU(True)
 
         nn.init.xavier_uniform_(self.c1.weight.data, math.sqrt(2.0))
@@ -149,14 +133,16 @@ class DBlock(DBlock):
 
         # Shortcut layer
         if self.learnable_sc:
-            if norm == "norm_est":
-                self.c_sc = NEConv2d(in_channels, out_channels, 1, 1, 0)
-            if self.spectral_norm:
-                self.c_sc = SNConv2d(in_channels, out_channels, 1, 1, 0)
-            else:
-                self.c_sc = nn.Conv2d(in_channels, out_channels, 1, 1, 0)
+            self.c_sc = nn.Conv2d(in_channels, out_channels, 1, 1, 0)
 
             nn.init.xavier_uniform_(self.c_sc.weight.data, 1.0)
+            
+        if spectral_norm and sn is not None:
+            self.c1 = sn(self.c1)
+            self.c2 = sn(self.c2)
+            if self.learnable_sc:
+                self.c_sc = sn(self.c_sc)
+
 
 
 class DBlockOptimized(DBlockOptimized):
@@ -176,26 +162,20 @@ class DBlockOptimized(DBlockOptimized):
         in_channels,
         out_channels,
         spectral_norm=True,
-        norm="sn",
+        sn=None
     ):
         super().__init__(in_channels, out_channels, spectral_norm)
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.spectral_norm = spectral_norm
 
-        # Build the layers
-        if norm == "norm_est":
-            self.c1 = NEConv2d(self.in_channels, self.out_channels, 3, 1, 1)
-            self.c2 = NEConv2d(self.out_channels, self.out_channels, 3, 1, 1)
-            self.c_sc = NEConv2d(self.in_channels, self.out_channels, 1, 1, 0)
-        elif self.spectral_norm:
-            self.c1 = SNConv2d(self.in_channels, self.out_channels, 3, 1, 1)
-            self.c2 = SNConv2d(self.out_channels, self.out_channels, 3, 1, 1)
-            self.c_sc = SNConv2d(self.in_channels, self.out_channels, 1, 1, 0)
-        else:
-            self.c1 = nn.Conv2d(self.in_channels, self.out_channels, 3, 1, 1)
-            self.c2 = nn.Conv2d(self.out_channels, self.out_channels, 3, 1, 1)
-            self.c_sc = nn.Conv2d(self.in_channels, self.out_channels, 1, 1, 0)
+        self.c1 = nn.Conv2d(self.in_channels, self.out_channels, 3, 1, 1)
+        self.c2 = nn.Conv2d(self.out_channels, self.out_channels, 3, 1, 1)
+        self.c_sc = nn.Conv2d(self.in_channels, self.out_channels, 1, 1, 0)
+        if spectral_norm and sn is not None:
+            self.c1 = sn(self.c1)
+            self.c2 = sn(self.c2)
+            self.c_sc = sn(self.c_sc)
 
         self.activation = nn.ReLU(True)
 
