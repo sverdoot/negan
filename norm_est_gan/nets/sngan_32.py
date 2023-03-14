@@ -7,7 +7,7 @@ from torch_mimicry.modules.layers import SNLinear
 from torch_mimicry.nets.sngan import SNGANDiscriminator32, SNGANGenerator32
 
 from norm_est_gan.modules.resblocks import DBlock, DBlockOptimized, GBlock
-from norm_est_gan.nets.our_gan import base
+from norm_est_gan.nets import base
 
 
 # def SNConv2d(*args, default=True, **kwargs):

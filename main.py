@@ -8,15 +8,13 @@ from munch import Munch
 from ruamel import yaml
 from torch import nn
 
-from norm_est_gan.modules.spectral_norm_new import SpectralNorm
-from norm_est_gan.nets.our_gan import sngan_32
+from norm_est_gan.nets import sngan_32
 from norm_est_gan.training.callback import LogSigularVals
 from norm_est_gan.training.trainer import CustomTrainer
 
 
 def parse_argumets():
     parser = argparse.ArgumentParser()
-    # parser.add_argument("config", type=str, default='configs/sn32/nesn.yml')
     parser.add_argument(
         "--norm",
         type=str,
@@ -36,9 +34,6 @@ def parse_argumets():
 
 
 def main(args):
-    # config = yaml.safe_load(args.config)
-    # config = Munch(config)
-
     # Data handling objects
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     dataset = mmc.datasets.load_dataset(root="./datasets", name=args.dataset)
@@ -47,11 +42,6 @@ def main(args):
     )
 
     # Define models and optimizers
-    # spectral_norm = SpectralNorm(
-    #     upd_gamma_every=config.upd_gamma_every,
-    #     denom=config.denom,
-    #     default=config.default
-    #     )
     netG = sngan_32.SNGANGenerator32(norm=args.norm, np_scale=args.np_scale).to(device)
     netD = sngan_32.SNGANDiscriminator32(norm=args.norm, np_scale=args.np_scale).to(
         device
@@ -61,7 +51,6 @@ def main(args):
     for mod in netD.modules():
         mod.register_forward_pre_hook(lambda m, i: setattr(m, "pad_to", i[0].shape[2:]))
 
-    # log_dir = Path(f"./log/sn32_{args.norm}_{args.np_scale:.03f}_{args.denom:.03f}_{args.suffix}")
     log_dir = Path(f"./log/sn32_{args.norm}{args.suffix}")
     if not args.eval:
         log_dir.mkdir(exist_ok=True, parents=True)
