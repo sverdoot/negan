@@ -1,16 +1,11 @@
-import logging
-import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import scipy as sp
 import torch
-from matplotlib import pyplot as plt
-from torch_mimicry.modules.spectral_norm import SpectralNorm
 from torchvision import transforms
-from torchvision.utils import make_grid
+from torchvision.utils import make_grid, save_image
 
 from norm_est_gan.modules.spectral_norm import NormEstimation
 from norm_est_gan.modules.svd import get_sing_vals
@@ -26,46 +21,26 @@ class Callback(ABC):
 
     def reset(self):
         self.cnt = 0
-
-
-# class CallbackRegistry:
-#     registry = {}
-
-#     @classmethod
-#     def register(cls, name: Optional[str] = None) -> Callable:
-#         def inner_wrapper(wrapped_class: Callback) -> Callback:
-#             if name is None:
-#                 name_ = wrapped_class.__name__
-#             else:
-#                 name_ = name
-#             cls.registry[name_] = wrapped_class
-#             return wrapped_class
-
-#         return inner_wrapper
-
-#     @classmethod
-#     def create(cls, name: str, **kwargs) -> Callback:
-#         model = cls.registry[name]
-#         model = model(**kwargs)
-#         return model
-
+        
 
 @torch.no_grad()
 def get_spectr(model):
     spectr = dict()
+    sigmas = dict()
     for i, mod in enumerate(model.modules()):
-        if NormEstimation in type(mod).__bases__ or SpectralNorm in type(mod).__bases__:
-            singular_vals = get_sing_vals(mod.weight, mod.pad_to, mod.stride)
-            singular_vals = torch.sort(singular_vals.flatten(), descending=True)[0]
-            spectr[i] = singular_vals.detach()
-        elif hasattr(mod, "weight_orig") and hasattr(
-            mod, "stride"
-        ):  # default spectral norm
-            singular_vals = get_sing_vals(mod.weight, mod.pad_to, mod.stride)
-            singular_vals = torch.sort(singular_vals.flatten(), descending=True)[0]
-            spectr[i] = singular_vals.detach()
+        # if hasattr(mod, "weight_orig") and hasattr(
+        #     mod, "stride"
+        # ):
+        if hasattr(mod, "weight_orig"):
+            if mod.weight_orig.ndim == 2:
+                sing_vals = torch.linalg.svdvals(mod.weight_orig).detach().cpu()
+            elif mod.weight_orig.ndim == 4:
+                sing_vals = get_sing_vals(mod.weight_orig, getattr(mod, "weight_pad_to", None), getattr(mod, "stride", None))
+            sing_vals = torch.sort(sing_vals.flatten(), descending=True)[0]
+            spectr[i] = sing_vals.detach()
+            sigmas[i] = mod.weight_sigma.detach()
 
-    return spectr
+    return spectr, sigmas
 
 
 @Registry.register()
@@ -87,10 +62,10 @@ class LogSigularVals(Callback):
         self.save_dir = save_dir
 
     @torch.no_grad()
-    def invoke(self, info: Dict[str, Any], log):
+    def invoke(self, info: Dict[str, Any], log_data):
         step = info.get("step", self.cnt)
         if step % self.invoke_every == 0:
-            singular_vals = get_spectr(self.net)
+            singular_vals, sigmas = get_spectr(self.net)
 
             gammas = dict()
             for n, v in singular_vals.items():
@@ -98,9 +73,10 @@ class LogSigularVals(Callback):
                 frob_norm = np.sqrt((v**2).sum())
                 n_dim = len(v)
                 gamma = frob_norm**2 / second_norm**2 / n_dim
-                log.add_metric(f"sec_norm_{n}", second_norm.item())
-                log.add_metric(f"frob_norm_{n}", frob_norm.item())
-                log.add_metric(f"gamma_{n}", gamma.item())
+                log_data.add_metric(f"sec_norm_{n}", second_norm.item())
+                log_data.add_metric(f"frob_norm_{n}", frob_norm.item())
+                log_data.add_metric(f"gamma_{n}", gamma.item())
+                log_data.add_metric(f"sigma_{n}", sigmas[n].item())
 
                 gammas[n] = gamma
 
@@ -111,40 +87,7 @@ class LogSigularVals(Callback):
         return 1
 
 
-# @CallbackRegistry.register()
-# class LogGamma(Callback):
-#     def __init__(
-#         self,
-#         net,
-#         *,
-#         invoke_every: int = 1,
-#         init_params: Optional[Dict] = None,
-#         keys: Optional[List[str]] = None,
-#         save_dir=None,
-#     ):
-#         self.init_params = init_params if init_params else {}
-
-#         self.invoke_every = invoke_every
-#         self.keys = keys
-#         self.net = net
-#         self.save_dir = save_dir
-
-#     @torch.no_grad()
-#     def invoke(self, info: Dict[str, Any]):
-#         step = info.get("step", self.cnt)
-#         if step % self.invoke_every == 0:
-#             gammas = dict()
-#             for i, mod in enumerate(self.net.modules()):
-#                 if NormEstimation in type(mod).__bases__:
-#                     gammas[i] = mod.gamma.detach().data
-
-#             torch.save(gammas, Path(self.save_dir, f'gamma{step:05d}.pt'))
-
-#         self.cnt += 1
-#         return 1
-
-
-# @CallbackRegistry.register()
+# @Registry.register()
 # class WandbCallback(Callback):
 #     def __init__(
 #         self,
@@ -163,7 +106,7 @@ class LogSigularVals(Callback):
 #         self.keys = keys
 
 #         self.img_transform = transforms.Resize(
-#             128, interpolation=transforms.InterpolationMode.NEAREST
+#             128, interpolation=transforms.InterpolationMode.LANCZOS
 #         )
 
 #     def invoke(self, info: Dict[str, Union[float, np.ndarray]]):

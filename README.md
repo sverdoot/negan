@@ -26,19 +26,18 @@ pip install einops
 Ttain:
 ```bash
 python main.py \
-    --norm {norm_est/sn} \ # our penalty vs spectral norm
-    --suffix exp_name \
-    --np_scale 1.0 # penalty scale
+    configs/sn32/{sn,ne,nesn,nosn}.yml \
+    --suffix exp_name
 ```
 
 Evaluate:
 ```bash
-python main.py --norm {norm_est/sn} --eval --suffix exp_name --num_steps 55000
+python main.py configs/sn32/{sn,ne,nesn,nosn}.yml --suffix exp_name  --eval
 ```
 
 Tensorboard:
 ```
-tensorboard --logdir=./log/exp1:exp1_name,./log/exp2:exp2_name  --port 8888
+tensorboard --logdir_spec=exp1_name:./log/exp1,exp2_name:./log/exp2  --port 8888
 ```
 
 ## Results

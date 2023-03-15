@@ -79,7 +79,12 @@ class SNGANDiscriminator32(SNGANDiscriminator32, base.BaseDiscriminator):
         self.block2 = DBlock(self.ndf, self.ndf, downsample=True, sn=spectral_norm)
         self.block3 = DBlock(self.ndf, self.ndf, downsample=False, sn=spectral_norm)
         self.block4 = DBlock(self.ndf, self.ndf, downsample=False, sn=spectral_norm)
-        self.l5 = SNLinear(self.ndf, 1)
+        
+        # self.l5 = SNLinear(self.ndf, 1)
+        self.l5 = nn.Linear(self.ndf, 1)
+        if spectral_norm is not None:
+            #pass
+            self.l5 = spectral_norm(self.l5)
         self.activation = nn.ReLU(True)
 
         # Initialise the weights

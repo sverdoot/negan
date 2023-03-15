@@ -14,10 +14,10 @@ from .svd import get_sing_vals
 class SpectralNorm:
     def __init__(
         self,
-        upd_gamma_every=1000,
-        n_samp=10,
-        denom=None,
-        default=False,
+        upd_gamma_every: int=1000,
+        n_samp: int=10,
+        denom: Optional[float]=None,
+        default: bool=False,
     ):
         self.upd_gamma_every = upd_gamma_every
         self.n_samp = n_samp
@@ -26,7 +26,23 @@ class SpectralNorm:
 
     def __call__(self, module: nn.Module, name: str = "weight") -> nn.Module:
         if self.default == True:
-            return nn.utils.spectral_norm(module, name=name)
+            module = nn.utils.spectral_norm(module, name=name)
+            # save sigma
+            module.register_buffer(f'{name}_sigma', torch.ones(1, requires_grad=False))
+            
+            def save_sigma(module: nn.Module, inputs: Any, outputs: Any):
+                u = getattr(module, name + '_u')
+                v = getattr(module, name + '_v')
+                weight = getattr(module, name + '_orig')
+                # weight = weight.permute(0,
+                #                             *[d for d in range(weight.dim()) if d != 1])
+                height = weight.size(0)
+                weight = weight.reshape(height, -1)
+                sigma = torch.dot(u, torch.mv(weight, v))
+                setattr(module, f'{name}_sigma', sigma.data)
+                
+            module.register_forward_hook(save_sigma)
+            
         else:
             NormEstimation.apply(
                 module,
@@ -35,7 +51,7 @@ class SpectralNorm:
                 self.n_samp,
                 self.denom,
             )
-            return module
+        return module
 
 
 class NormEstimation:
@@ -83,26 +99,31 @@ class NormEstimation:
 
     @staticmethod
     @torch.no_grad()
-    def compute_gamma(W: torch.Tensor, pad_to: Tuple[int, int], stride: int):
-        sing_vals = torch.sort(
-            get_sing_vals(W, pad_to, stride).flatten(), descending=True
-        )[0]
+    def compute_eff_rank(W: torch.Tensor, pad_to: Optional[Tuple[int, int]]=None, stride: Optional[int]=None):
+        if W.ndim == 2:
+            sing_vals = torch.linalg.svdvals(W)
+        elif W.ndim == 4:
+            sing_vals = torch.sort(
+                get_sing_vals(W, pad_to, stride).flatten(), descending=True
+            )[0]
+        else:
+            ValueError("")
         second_norm = sing_vals[0]
         frob_norm = torch.sqrt((sing_vals**2).sum())
         n_dim = len(sing_vals)
-        gamma = frob_norm ** 2 / second_norm ** 2 / n_dim
-        return gamma, n_dim
+        eff_rank = frob_norm ** 2 / second_norm ** 2
+        return eff_rank, n_dim
 
-    def upd_gamma(self, module: nn.Module):
+    def upd_eff_rank(self, module: nn.Module):
         W = getattr(module, f"{self.name}_orig")
         cnt = getattr(module, f"{self.name}_cnt").item()
         setattr(module, f"{self.name}_cnt", torch.tensor([cnt + 1], device=W.device))
         if cnt % self.upd_gamma_every == 0:
-            gamma, n_dim = NormEstimation.compute_gamma(
-                W, getattr(module, f"{self.name}_pad_to"), module.stride
+            eff_rank, n_dim = NormEstimation.compute_eff_rank(
+                W, getattr(module, f"{self.name}_pad_to", None), getattr(module, "stride", None)
             )
             with torch.no_grad():
-                setattr(module, f"{self.name}_gamma", gamma)
+                setattr(module, f"{self.name}_gamma", torch.tensor([eff_rank.item() / n_dim], device=W.device))
                 setattr(module, f"{self.name}_ndim", torch.tensor([n_dim], device=W.device))
                 
     def estimate_norm(self, module: nn.Module):
@@ -121,10 +142,11 @@ class NormEstimation:
     def compute_weight(self, module):
         weight = getattr(module, f"{self.name}_orig")
         if module.training:
-            self.upd_gamma(module)
+            self.upd_eff_rank(module)
         if self.denom is not None:
-            est = self.estimate_norm(module)
-            weight = weight / est ** 0.5 / self.denom
+            sigma = self.estimate_norm(module) ** .5
+            setattr(module, f'{self.name}_sigma', sigma.clone().data * self.denom)
+            weight = weight / sigma / self.denom
         return weight
 
     def __call__(self, module: nn.Module, inputs: Any) -> None:
@@ -162,80 +184,15 @@ class NormEstimation:
         # setattr(module, f"{fn.name}_cnt", 0)
         # Register a singular vector for each gamma
         module.register_buffer(f"{fn.name}_gamma", torch.ones(1, requires_grad=False))
+        module.register_buffer(f"{fn.name}_sigma", torch.ones(1, requires_grad=False))
         module.register_buffer(f"{fn.name}_ndim", torch.ones(1, dtype=torch.long, requires_grad=False))
         module.register_buffer(f"{fn.name}_cnt", torch.zeros(1, dtype=torch.long, requires_grad=False))
 
         module.register_forward_pre_hook(
-            lambda m, i: setattr(m, f"{fn.name}_pad_to", i[0].shape[2:])
+            lambda m, i: setattr(m, f"{fn.name}_pad_to", i[0].shape[2:] if isinstance(m, nn.Conv2d) else [])
         )
         module.register_forward_pre_hook(fn)
-        module._register_state_dict_hook(SpectralNormStateDictHook(fn))
+        # module._register_state_dict_hook(SpectralNormStateDictHook(fn))
         # module._register_load_state_dict_pre_hook(SpectralNormLoadStateDictPreHook(fn))
         return fn
 
-
-# class SpectralNormLoadStateDictPreHook:
-#     # See docstring of SpectralNorm._version on the changes to spectral_norm.
-#     def __init__(self, fn) -> None:
-#         self.fn = fn
-
-#     def __call__(
-#         self,
-#         state_dict,
-#         prefix,
-#         local_metadata,
-#         strict,
-#         missing_keys,
-#         unexpected_keys,
-#         error_msgs,
-#     ) -> None:
-#         fn = self.fn
-#         version = local_metadata.get("spectral_norm", {}).get(
-#             fn.name + ".version", None
-#         )
-#         if version is None or version < 1:
-#             weight_key = prefix + fn.name
-#             if (
-#                 version is None
-#                 and all(weight_key + s in state_dict for s in ("_orig", "_gamma"))
-#                 and weight_key not in state_dict
-#             ):
-#                 # Detect if it is the updated state dict and just missing metadata.
-#                 # This could happen if the users are crafting a state dict themselves,
-#                 # so we just pretend that this is the newest.
-#                 return
-#             has_missing_keys = False
-#             for suffix in ("_orig", "", "_gamma"):
-#                 key = weight_key + suffix
-#                 if key not in state_dict:
-#                     has_missing_keys = True
-#                     if strict:
-#                         missing_keys.append(key)
-#             if has_missing_keys:
-#                 return
-            # with torch.no_grad():
-            #     weight_orig = state_dict[weight_key + '_orig']
-            #     weight = state_dict.pop(weight_key)
-            #     sigma = (weight_orig / weight).mean()
-            #     weight_mat = fn.reshape_weight_to_matrix(weight_orig)
-            #     u = state_dict[weight_key + '_u']
-            #     v = fn._solve_v_and_rescale(weight_mat, u, sigma)
-            #     state_dict[weight_key + '_v'] = v
-
-
-# This is a top level class because Py2 pickle doesn't like inner class nor an
-# instancemethod.
-# class SpectralNormStateDictHook:
-#     # See docstring of SpectralNorm._version on the changes to spectral_norm.
-#     def __init__(self, fn) -> None:
-#         self.fn = fn
-
-#     def __call__(self, module, state_dict, prefix, local_metadata) -> None:
-#         if "spectral_norm" not in local_metadata:
-#             local_metadata["spectral_norm"] = {}
-#         key = self.fn.name + ".version"
-#         if key in local_metadata["spectral_norm"]:
-#             raise RuntimeError(
-#                 "Unexpected key in metadata['spectral_norm']: {}".format(key)
-#             )
-#         local_metadata["spectral_norm"][key] = self.fn._version
