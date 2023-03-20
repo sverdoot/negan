@@ -1,21 +1,22 @@
 """
 Implementation of Base GAN models.
 """
-import torch
-from torch_mimicry.nets.gan import BaseDiscriminator, BaseGenerator
+from torch_mimicry.nets.gan import BaseDiscriminator as BaseD
+from torch_mimicry.nets.gan import BaseGenerator as BaseG
 
-from norm_est_gan.modules.spectral_norm import NormEstimation
+from norm_est_gan.modules.spectral_norm import NormEstimateSN
 
 
 def compute_norm_penalty(model, scale=1.0):
     loss = 0
-    for p in model.modules():
-        if NormEstimation in type(p).__bases__:
-            loss += p.estimate_norm().squeeze()
+    for mod in model.modules():
+        if hasattr(mod, "weight_orig"):
+            ne = NormEstimateSN(n_samp=10)
+            loss += ne.estimate_norm(mod).squeeze() ** 0.5
     return loss * scale
 
 
-class BaseGenerator(BaseGenerator):
+class BaseGenerator(BaseG):
     r"""
     Base class for a generic unconditional generator model.
 
@@ -34,7 +35,8 @@ class BaseGenerator(BaseGenerator):
         Computes GAN loss for generator.
 
         Args:
-            output (Tensor): A batch of output logits from the discriminator of shape (N, 1).
+            output (Tensor): A batch of output logits from the discriminator of
+                shape (N, 1).
 
         Returns:
             Tensor: A batch of GAN losses for the generator.
@@ -47,7 +49,7 @@ class BaseGenerator(BaseGenerator):
         return errG
 
 
-class BaseDiscriminator(BaseDiscriminator):
+class BaseDiscriminator(BaseD):
     r"""
     Base class for a generic unconditional discriminator model.
 
@@ -64,8 +66,10 @@ class BaseDiscriminator(BaseDiscriminator):
         Computes GAN loss for discriminator.
 
         Args:
-            output_real (Tensor): A batch of output logits of shape (N, 1) from real images.
-            output_fake (Tensor): A batch of output logits of shape (N, 1) from fake images.
+            output_real (Tensor): A batch of output logits of shape (N, 1) from
+                real images.
+            output_fake (Tensor): A batch of output logits of shape (N, 1) from
+                fake images.
 
         Returns:
             errD (Tensor): A batch of GAN losses for the discriminator.

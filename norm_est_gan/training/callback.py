@@ -1,13 +1,10 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from torchvision import transforms
-from torchvision.utils import make_grid, save_image
 
-from norm_est_gan.modules.spectral_norm import NormEstimation
 from norm_est_gan.modules.svd import get_sing_vals
 from norm_est_gan.registry import Registry
 
@@ -21,7 +18,7 @@ class Callback(ABC):
 
     def reset(self):
         self.cnt = 0
-        
+
 
 @torch.no_grad()
 def get_spectr(model):
@@ -35,7 +32,11 @@ def get_spectr(model):
             if mod.weight_orig.ndim == 2:
                 sing_vals = torch.linalg.svdvals(mod.weight_orig).detach().cpu()
             elif mod.weight_orig.ndim == 4:
-                sing_vals = get_sing_vals(mod.weight_orig, getattr(mod, "weight_pad_to", None), getattr(mod, "stride", None))
+                sing_vals = get_sing_vals(
+                    mod.weight_orig,
+                    getattr(mod, "weight_pad_to", None),
+                    getattr(mod, "stride", None),
+                )
             sing_vals = torch.sort(sing_vals.flatten(), descending=True)[0]
             spectr[i] = sing_vals.detach()
             sigmas[i] = mod.weight_sigma.detach()

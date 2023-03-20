@@ -1,24 +1,23 @@
 import argparse
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 import torch
 import torch.optim as optim
 import torch_mimicry as mmc
 from munch import Munch
 from ruamel import yaml
-from torch import nn
 
+from norm_est_gan.metrics.compute_metrics import evaluate
 from norm_est_gan.modules.spectral_norm import SpectralNorm
 from norm_est_gan.nets import sngan_32
 from norm_est_gan.training.callback import LogSigularVals
 from norm_est_gan.training.trainer import CustomTrainer
-from norm_est_gan.metrics.compute_metrics import evaluate
 
 
 def parse_argumets():
     parser = argparse.ArgumentParser()
-    parser.add_argument("config", type=str, default='configs/sn32/nesn.yml')
+    parser.add_argument("config", type=str, default="configs/sn32/nesn.yml")
     parser.add_argument("--eval", action="store_true")
     parser.add_argument("--log_dir", type=str)
     parser.add_argument("--dataset", type=str, default="cifar10")
@@ -32,40 +31,50 @@ def parse_argumets():
 
 
 def main(args):
-    config = yaml.safe_load(Path(args.config).open('r'))
+    config = yaml.safe_load(Path(args.config).open("r"))
     config = Munch(config)
 
     # Data handling objects
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     dataset = mmc.datasets.load_dataset(root="./datasets", name=args.dataset)
     dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=64, shuffle=True, num_workers=4
+        dataset,
+        batch_size=64,
+        shuffle=True,
+        num_workers=4,
     )
 
     # Define models and optimizers
     spectral_norm = SpectralNorm(
         upd_gamma_every=config.upd_gamma_every,
         denom=config.denom,
-        default=config.default_sn
-        )
-    netG = sngan_32.SNGANGenerator32(spectral_norm=spectral_norm).to(device)
-    netD = sngan_32.SNGANDiscriminator32(spectral_norm=spectral_norm).to(device)
-    # for mod in netG.modules():
-    #     mod.register_forward_pre_hook(lambda m, i: setattr(m, "pad_to", i[0].shape[2:]))
-    # for mod in netD.modules():
-    #     mod.register_forward_pre_hook(lambda m, i: setattr(m, "pad_to", i[0].shape[2:]))
+        power_method=config.power_method,
+        fft=config.fft,
+    )
+    netG = sngan_32.SNGANGenerator32(
+        spectral_norm=spectral_norm,
+        np_scale=config.np_scale,
+    ).to(device)
+    netD = sngan_32.SNGANDiscriminator32(
+        spectral_norm=spectral_norm,
+        np_scale=config.np_scale,
+    ).to(device)
 
     if args.log_dir is not None:
         log_dir = Path(args.log_dir)
     else:
-        prefix = '_'.join(list(map(lambda x: Path(x).stem, Path(args.config).parts))[1:])
-        suffix = '_' + args.suffix if args.suffix is not None else ''
-        log_dir = Path(f"./log/{prefix}{suffix}") # _{config.np_scale:.03f}_{config.denom:.03f}_
-    
+        prefix = "_".join(
+            list(map(lambda x: Path(x).stem, Path(args.config).parts))[1:],
+        )
+        suffix = "_" + args.suffix if args.suffix is not None else ""
+        log_dir = Path(
+            f"./log/{prefix}{suffix}",
+        )  # _{config.np_scale:.03f}_{config.denom:.03f}_
+
     if not args.eval:
         log_dir.mkdir(exist_ok=True, parents=True)
         shutil.copyfile(Path(args.config), Path(log_dir, Path(args.config).name))
-        
+
         optD = optim.Adam(netD.parameters(), 2e-4, betas=(0.0, 0.9))
         optG = optim.Adam(netG.parameters(), 2e-4, betas=(0.0, 0.9))
 

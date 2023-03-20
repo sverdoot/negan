@@ -3,7 +3,6 @@ Implementation of the Logger object for performing training logging and visualis
 """
 import os
 
-import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch_mimicry.training import Logger
@@ -12,7 +11,13 @@ from torchvision import utils as vutils
 
 class CustomLogger(Logger):
     def __init__(
-        self, log_dir, num_steps, dataset_size, device, flush_secs=120, **kwargs
+        self,
+        log_dir,
+        num_steps,
+        dataset_size,
+        device,
+        flush_secs=120,
+        **kwargs,
     ):
         super().__init__(log_dir, num_steps, dataset_size, device, flush_secs, **kwargs)
         self.writer = self._build_writer()
@@ -30,8 +35,9 @@ class CustomLogger(Logger):
 
     def write_summaries(self, log_data, global_step):
         """
-        Tasks appropriate writers to write the summaries in tensorboard. Creates additional
-        writers for summary writing if there are new scalars to log in log_data.
+        Tasks appropriate writers to write the summaries in tensorboard. Creates a
+        dditional writers for summary writing if there are new scalars to log in
+        log_data.
 
         Args:
             log_data (MetricLog): Dict-like object to collect log data for TB writing.
@@ -45,9 +51,11 @@ class CustomLogger(Logger):
             #         self.writers[metric] = self._build_writer(metric)
 
             # Write with a group name if it exists
-            name = log_data.get_group_name(metric) or metric
+            # name = log_data.get_group_name(metric) or metric
             self.writer.add_scalar(
-                metric, log_data[metric], global_step=global_step  # name,
+                metric,
+                log_data[metric],
+                global_step=global_step,  # name,
             )
 
     def close_writers(self):
@@ -166,7 +174,7 @@ class CustomLogger(Logger):
 
                 vutils.save_image(
                     images_viz,
-                    "{}/{}_samples_step_{}.png".format(img_dir, name, global_step),
+                    f"{img_dir}/{name}_samples_step_{global_step}.png",
                     normalize=True,
                 )
 
@@ -174,5 +182,7 @@ class CustomLogger(Logger):
                 #     self.writers['img'] = self._build_writer('img')
 
                 self.writer.add_image(
-                    "{}_vis".format(name), images_viz, global_step=global_step
+                    f"{name}_vis",
+                    images_viz,
+                    global_step=global_step,
                 )

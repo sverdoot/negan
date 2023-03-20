@@ -44,3 +44,6 @@ wandb/*
 log/**/*.png
 
 **/events.out.tfevents.*
+
+Dockerfile
+.mypy_cache

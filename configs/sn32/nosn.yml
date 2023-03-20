@@ -1,4 +1,4 @@
 denom: null
 np_scale: 0.0
 upd_gamma_every: 1000
-default_sn: false
+power_method: false

@@ -1,9 +1,6 @@
-import os
-import re
 import time
 from typing import Sequence
 
-import torch
 from torch_mimicry.training import Trainer, metric_log
 
 from .callback import Callback
@@ -66,7 +63,7 @@ class CustomTrainer(Trainer):
         """
         # Restore models
         global_step = self._restore_models_and_step()
-        print("INFO: Starting training from global step {}...".format(global_step))
+        print(f"INFO: Starting training from global step {global_step}...")
         for callback in self.callbacks:
             callback.cnt = global_step
 
@@ -84,7 +81,7 @@ class CustomTrainer(Trainer):
                 # Update n_dis times for D
                 for i in range(self.n_dis):
                     iter_dataloader, real_batch = self._fetch_data(
-                        iter_dataloader=iter_dataloader
+                        iter_dataloader=iter_dataloader,
                     )
 
                     # ------------------------
@@ -119,7 +116,8 @@ class CustomTrainer(Trainer):
                 global_step += 1
 
                 log_data = self.scheduler.step(
-                    log_data=log_data, global_step=global_step
+                    log_data=log_data,
+                    global_step=global_step,
                 )
 
                 # -------------------------
@@ -130,7 +128,8 @@ class CustomTrainer(Trainer):
 
                 if global_step % self.log_steps == 0:
                     self.logger.write_summaries(
-                        log_data=log_data, global_step=global_step
+                        log_data=log_data,
+                        global_step=global_step,
                     )
 
                 if global_step % self.print_steps == 0:

@@ -1,27 +1,18 @@
 """
 https://github.com/kwotsin/mimicry/blob/master/torch_mimicry/nets/sngan/sngan_32.py
 """
-import torch
 import torch.nn as nn
-from torch_mimicry.modules.layers import SNLinear
-from torch_mimicry.nets.sngan import SNGANDiscriminator32, SNGANGenerator32
+from torch_mimicry.nets.sngan import SNGANDiscriminator32 as SNGAND32
+from torch_mimicry.nets.sngan import SNGANGenerator32 as SNGANG32
 
 from norm_est_gan.modules.resblocks import DBlock, DBlockOptimized, GBlock
 from norm_est_gan.nets import base
 
 
-# def SNConv2d(*args, default=True, **kwargs):
-#     r"""
-#     Wrapper for applying spectral norm on conv2d layer.
-#     """
-#     if default:
-#         return nn.utils.spectral_norm(nn.Conv2d(*args, **kwargs))
-
-#     else:
-#         return spectral_norm.SNConv2d(*args, **kwargs)
+# from torch_mimicry.modules.layers import SNLinear # isort: ignore
 
 
-class SNGANGenerator32(SNGANGenerator32, base.BaseGenerator):
+class SNGANGenerator32(SNGANG32, base.BaseGenerator):
     r"""
     ResNet backbone generator for SNGAN.
 
@@ -33,9 +24,11 @@ class SNGANGenerator32(SNGANGenerator32, base.BaseGenerator):
     """
 
     def __init__(self, nz=128, ngf=256, bottom_width=4, **kwargs):
-        spectral_norm = kwargs.pop("spectral_norm", None)
-        super(SNGANGenerator32, self).__init__(
-            nz=nz, ngf=ngf, bottom_width=bottom_width
+        kwargs.pop("spectral_norm", None)
+        super().__init__(
+            nz=nz,
+            ngf=ngf,
+            bottom_width=bottom_width,
         )  # , **kwargs)
         base.BaseGenerator.__post_init__(self, **kwargs)
 
@@ -53,14 +46,28 @@ class SNGANGenerator32(SNGANGenerator32, base.BaseGenerator):
         nn.init.xavier_uniform_(self.c5.weight.data, 1.0)
 
     def train_step(
-        self, real_batch, netD, optG, log_data, device=None, global_step=None, **kwargs
+        self,
+        real_batch,
+        netD,
+        optG,
+        log_data,
+        device=None,
+        global_step=None,
+        **kwargs,
     ):
         return base.BaseGenerator.train_step(
-            self, real_batch, netD, optG, log_data, device, global_step, **kwargs
+            self,
+            real_batch,
+            netD,
+            optG,
+            log_data,
+            device,
+            global_step,
+            **kwargs,
         )
 
 
-class SNGANDiscriminator32(SNGANDiscriminator32, base.BaseDiscriminator):
+class SNGANDiscriminator32(SNGAND32, base.BaseDiscriminator):
     r"""
     ResNet backbone discriminator for SNGAN.
 
@@ -68,22 +75,48 @@ class SNGANDiscriminator32(SNGANDiscriminator32, base.BaseDiscriminator):
         ndf (int): Variable controlling discriminator feature map sizes.
         loss_type (str): Name of loss to use for GAN loss.
     """
+    im_size = 32
 
     def __init__(self, ndf=128, **kwargs):
         spectral_norm = kwargs.pop("spectral_norm", None)
-        super(SNGANDiscriminator32, self).__init__(ndf=ndf)  # , **kwargs)
+        super().__init__(ndf=ndf)  # , **kwargs)
         base.BaseDiscriminator.__post_init__(self, **kwargs)
 
         # Build layers
-        self.block1 = DBlockOptimized(3, self.ndf, sn=spectral_norm)
-        self.block2 = DBlock(self.ndf, self.ndf, downsample=True, sn=spectral_norm)
-        self.block3 = DBlock(self.ndf, self.ndf, downsample=False, sn=spectral_norm)
-        self.block4 = DBlock(self.ndf, self.ndf, downsample=False, sn=spectral_norm)
-        
+        self.block1 = DBlockOptimized(
+            3,
+            self.ndf,
+            sn=spectral_norm,
+            im_size=self.im_size,
+        )
+        self.block2 = DBlock(
+            self.ndf,
+            self.ndf,
+            downsample=True,
+            sn=spectral_norm,
+            im_size=self.im_size // (2**1),
+        )
+        self.block3 = DBlock(
+            self.ndf,
+            self.ndf,
+            downsample=False,
+            sn=spectral_norm,
+            im_size=self.im_size // (2**2),
+        )
+        self.block4 = DBlock(
+            self.ndf,
+            self.ndf,
+            downsample=False,
+            sn=spectral_norm,
+            im_size=self.im_size // (2**2),
+        )
+
         # self.l5 = SNLinear(self.ndf, 1)
         self.l5 = nn.Linear(self.ndf, 1)
         if spectral_norm is not None:
-            #pass
+            # pass
+            self.l5.weight_pad_to = (1, 1)
+            self.l5.stride = None
             self.l5 = spectral_norm(self.l5)
         self.activation = nn.ReLU(True)
 
@@ -91,8 +124,22 @@ class SNGANDiscriminator32(SNGANDiscriminator32, base.BaseDiscriminator):
         nn.init.xavier_uniform_(self.l5.weight.data, 1.0)
 
     def train_step(
-        self, real_batch, netG, optD, log_data, device=None, global_step=None, **kwargs
+        self,
+        real_batch,
+        netG,
+        optD,
+        log_data,
+        device=None,
+        global_step=None,
+        **kwargs,
     ):
         return base.BaseDiscriminator.train_step(
-            self, real_batch, netG, optD, log_data, device, global_step, **kwargs
+            self,
+            real_batch,
+            netG,
+            optD,
+            log_data,
+            device,
+            global_step,
+            **kwargs,
         )

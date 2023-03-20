@@ -1,8 +1,8 @@
-from typing import Optional
+from typing import Any, Dict, Optional
 
 
 class Registry:
-    registry = {}
+    registry: Dict[str, Any] = {}
 
     @classmethod
     def register(cls, name: Optional[str] = None):

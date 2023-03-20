@@ -22,8 +22,14 @@ pip install einops
 ```
 
 ## Usage
+Configs:
+* nosn - default GAN
+* sn - default SN-GAN
+* sn_prop - normalization of block-diagonal matrix
+* ne - our spectral norm regularization
+* nesn - our spectral normalization
 
-Ttain:
+Train:
 ```bash
 python main.py \
     configs/sn32/{sn,ne,nesn,nosn}.yml \

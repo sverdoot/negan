@@ -4,7 +4,7 @@ version = "0.0.1"
 description = ""
 authors = []
 readme = "README.md"
-repository = "http://github.com/sverdoot/2norm_gan.git"
+repository = "http://github.com/sverdoot/negan.git"
 documentation = "TBD"
 
 [tool.black]
@@ -39,6 +39,7 @@ seaborn = "^0.12.2"
 jupyter = "^1.0.0"
 ruamel-yaml = "^0.17.21"
 munch = "^2.5.0"
+pre-commit = "^3.1.1"
 
 [tool.isort]
 src_paths = ["."]
