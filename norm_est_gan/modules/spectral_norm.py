@@ -48,6 +48,7 @@ class SpectralNorm:
                 dim=dim,
                 eps=1e-12,
                 n_power_iterations=1,
+                denom=self.denom,
                 fft=self.fft,
             )
             # save sigma
@@ -89,12 +90,14 @@ class PowerMethodSN(TorchSN):
         n_power_iterations: int = 1,
         dim: int = 0,
         eps: float = 1e-12,
+        denom: Optional[float] = None,
         fft: bool = False,
     ) -> None:
         super().__init__(name, n_power_iterations, dim, eps)
         self.fft = fft
         self.stride = stride
         self.pad_to = pad_to
+        self.denom = denom if denom is not None else 1.0
 
     def compute_weight(
         self,
@@ -152,7 +155,7 @@ class PowerMethodSN(TorchSN):
                 torch.einsum("abcd,abd->abc", weight_mat, v),
             )
             sigma = ((sigma.real**2 + sigma.imag**2) ** 0.5).max()
-        weight = weight / sigma
+        weight = weight / sigma / self.denom
         setattr(
             module,
             f"{self.name}_sigma",
@@ -211,6 +214,7 @@ class PowerMethodSN(TorchSN):
         n_power_iterations: int,
         dim: int,
         eps: float,
+        denom,
         fft: bool,
     ) -> "SpectralNorm":
         for k, hook in module._forward_pre_hooks.items():
@@ -227,6 +231,7 @@ class PowerMethodSN(TorchSN):
             n_power_iterations,
             dim,
             eps,
+            denom,
             fft,
         )
         weight = module._parameters[name]

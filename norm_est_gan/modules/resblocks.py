@@ -178,12 +178,16 @@ class DBlockOptimized(DBlockOptimized):  # type: ignore
         self.c2 = nn.Conv2d(self.out_channels, self.out_channels, 3, 1, 1)
         self.c_sc = nn.Conv2d(self.in_channels, self.out_channels, 1, 1, 0)
         if spectral_norm and sn is not None:
-            self.c1.weight_pad_to = self.c2.weight_pad_to = self.c_sc.weight_pad_to = (
+            self.c1.weight_pad_to = self.c2.weight_pad_to = (
                 im_size,
                 im_size,
             )
             self.c1 = sn(self.c1)
             self.c2 = sn(self.c2)
+            self.c_sc.weight_pad_to = (
+                im_size // 2,
+                im_size // 2,
+            )
             self.c_sc = sn(self.c_sc)
 
         self.activation = nn.ReLU(True)

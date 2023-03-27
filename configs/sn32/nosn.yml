@@ -2,3 +2,4 @@ denom: null
 np_scale: 0.0
 upd_gamma_every: 1000
 power_method: false
+fft: true

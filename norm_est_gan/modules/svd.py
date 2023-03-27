@@ -5,9 +5,6 @@ import torch
 from einops import rearrange
 
 
-# from torch.nn import functional as F
-
-
 def prepare_matrix(
     kernel: torch.Tensor,
     pad_to: Sequence[int],

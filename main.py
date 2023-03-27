@@ -31,10 +31,23 @@ def parse_argumets():
 
 
 def main(args):
-    config = yaml.safe_load(Path(args.config).open("r"))
+    if args.log_dir is not None:
+        log_dir = Path(args.log_dir)
+    else:
+        prefix = "_".join(
+            list(map(lambda x: Path(x).stem, Path(args.config).parts))[1:],
+        )
+        suffix = "_" + args.suffix if args.suffix is not None else ""
+        log_dir = Path(
+            f"./log/{prefix}{suffix}",
+        )  # _{config.np_scale:.03f}_{config.denom:.03f}_
+
+    if args.eval:
+        config = yaml.safe_load(Path(log_dir, Path(args.config).name).open("r"))
+    else:
+        config = yaml.safe_load(Path(args.config).open("r"))
     config = Munch(config)
 
-    # Data handling objects
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     dataset = mmc.datasets.load_dataset(root="./datasets", name=args.dataset)
     dataloader = torch.utils.data.DataLoader(
@@ -44,7 +57,6 @@ def main(args):
         num_workers=4,
     )
 
-    # Define models and optimizers
     spectral_norm = SpectralNorm(
         upd_gamma_every=config.upd_gamma_every,
         denom=config.denom,
@@ -59,17 +71,6 @@ def main(args):
         spectral_norm=spectral_norm,
         np_scale=config.np_scale,
     ).to(device)
-
-    if args.log_dir is not None:
-        log_dir = Path(args.log_dir)
-    else:
-        prefix = "_".join(
-            list(map(lambda x: Path(x).stem, Path(args.config).parts))[1:],
-        )
-        suffix = "_" + args.suffix if args.suffix is not None else ""
-        log_dir = Path(
-            f"./log/{prefix}{suffix}",
-        )  # _{config.np_scale:.03f}_{config.denom:.03f}_
 
     if not args.eval:
         log_dir.mkdir(exist_ok=True, parents=True)

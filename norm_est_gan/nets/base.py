@@ -12,7 +12,8 @@ def compute_norm_penalty(model, scale=1.0):
     for mod in model.modules():
         if hasattr(mod, "weight_orig"):
             ne = NormEstimateSN(n_samp=10)
-            loss += ne.estimate_norm(mod).squeeze() ** 0.5
+            # loss += ne.estimate_norm(mod).squeeze() ** 0.5
+            loss += ne.estimate_norm(mod).squeeze().log()
     return loss * scale
 
 
